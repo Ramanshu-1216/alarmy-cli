@@ -117,10 +117,29 @@ class TestAlarmScheduler(unittest.TestCase):
     def setUp(self):
         self.temp_db_fd, self.temp_db_path = tempfile.mkstemp()
         os.close(self.temp_db_fd)
+        
+        # Start mock patchers for OS scheduler calls
+        self.patcher_schedule = patch('alarm_clock.scheduler.schedule_alarm_task')
+        self.patcher_cancel = patch('alarm_clock.scheduler.cancel_alarm_task')
+        self.patcher_snooze = patch('alarm_clock.scheduler.schedule_snooze_task')
+        self.patcher_cancel_snooze = patch('alarm_clock.scheduler.cancel_snooze_task')
+        
+        self.mock_schedule = self.patcher_schedule.start()
+        self.mock_cancel = self.patcher_cancel.start()
+        self.mock_snooze = self.patcher_snooze.start()
+        self.mock_cancel_snooze = self.patcher_cancel_snooze.start()
+        
         self.scheduler = AlarmScheduler(storage_path=self.temp_db_path)
 
     def tearDown(self):
         self.scheduler.stop()
+        
+        # Stop patchers
+        self.patcher_schedule.stop()
+        self.patcher_cancel.stop()
+        self.patcher_snooze.stop()
+        self.patcher_cancel_snooze.stop()
+        
         if os.path.exists(self.temp_db_path):
             try:
                 os.remove(self.temp_db_path)
@@ -170,10 +189,8 @@ class TestAlarmScheduler(unittest.TestCase):
         self.assertEqual(loaded.state, AlarmState.SNOOZED)
 
     def test_background_auto_dismiss(self):
-        # Create alarm with 1-second auto-dismiss
         alarm = self.scheduler.add_alarm("12:00", "Fast Expiry", auto_dismiss_sec=1)
         
-        # Manually trigger ringing
         with self.scheduler._lock:
             self.scheduler._load_from_disk()
             scheduler_alarm = self.scheduler._alarms[alarm.id]
@@ -181,30 +198,30 @@ class TestAlarmScheduler(unittest.TestCase):
             scheduler_alarm.ring_start_time = datetime.datetime.now() - datetime.timedelta(seconds=2)
             self.scheduler._save_to_disk()
             
-        # Run background evaluation cycle once manually to simulate scheduler thread logic
         self.scheduler._run_loop_cycle_for_testing()
         
-        # Verify it automatically transitioned to DISMISSED
         alarms = self.scheduler.get_all_alarms()
         self.assertEqual(alarms[0].state, AlarmState.DISMISSED)
 
     def test_background_auto_reset(self):
-        # Create recurring alarm
         alarm = self.scheduler.add_alarm("08:30", "Recurring Workout", days=["Monday"])
-        
-        # Set state to DISMISSED (e.g. user turned it off)
         self.scheduler.dismiss_alarm(alarm.id)
         
-        # Run cycle when current time has moved past 08:30 (e.g., system is at 08:31)
-        # We patch datetime inside the scheduler's lock block
         with patch('datetime.datetime') as mock_dt:
-            # We mock datetime.now() to return 08:31:00 on a Monday
             mock_dt.now.return_value = datetime.datetime(2026, 6, 22, 8, 31, 0)
             self.scheduler._run_loop_cycle_for_testing()
             
-        # Verify it automatically transitioned back to PENDING for the next day
         alarms = self.scheduler.get_all_alarms()
         self.assertEqual(alarms[0].state, AlarmState.PENDING)
+
+    def test_os_scheduler_calls(self):
+        # Verify OS task creation runs on add_alarm
+        alarm = self.scheduler.add_alarm("10:00", "OS Task Test")
+        self.mock_schedule.assert_called_once_with(alarm.id, alarm.time, alarm.days)
+        
+        # Verify OS task cancellation runs on remove_alarm
+        self.scheduler.remove_alarm(alarm.id)
+        self.mock_cancel.assert_called_once_with(alarm.id)
 
 # Patching _run_loop_cycle_for_testing helper onto AlarmScheduler for direct unit testing
 def _run_loop_cycle_for_testing(self):

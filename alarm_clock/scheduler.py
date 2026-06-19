@@ -6,6 +6,12 @@ import json
 from typing import Dict, List, Optional, Callable
 from alarm_clock.models import Alarm, AlarmState
 from alarm_clock.audio import AlarmSoundController
+from alarm_clock.os_scheduler import (
+    schedule_alarm_task, 
+    cancel_alarm_task, 
+    schedule_snooze_task, 
+    cancel_snooze_task
+)
 
 def parse_time(time_str: str) -> datetime.time:
     """
@@ -24,6 +30,7 @@ class AlarmScheduler:
     """
     Thread-safe manager for scheduling, monitoring, and triggering alarms.
     Saves and synchronizes state via a local JSON file to support multi-process CLI usage.
+    Delegates trigger events to native OS schedulers (Task Scheduler / Cron).
     """
     def __init__(self, on_trigger_callback: Optional[Callable[[Alarm], None]] = None, storage_path: Optional[str] = None):
         self.storage_path = storage_path or os.path.expanduser("~/.cli_alarms.json")
@@ -94,7 +101,7 @@ class AlarmScheduler:
 
     def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60) -> Alarm:
         """
-        Parses time string, creates an alarm with recurrence/dismiss options, and saves it thread-safely.
+        Parses time string, creates an alarm, saves it, and registers it with the OS task scheduler.
         """
         time_obj = parse_time(time_str)
         with self._lock:
@@ -104,23 +111,31 @@ class AlarmScheduler:
             alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec)
             self._alarms[alarm_id] = alarm
             self._save_to_disk()
-            return alarm
+            
+        # Hook into OS-native Task Scheduler
+        schedule_alarm_task(alarm.id, alarm.time, alarm.days)
+        return alarm
 
     def remove_alarm(self, alarm_id: int) -> bool:
         """
-        Removes an alarm by ID. Returns True if found and removed.
+        Removes an alarm from the collection and cancels its scheduled OS tasks.
         """
         with self._lock:
             self._load_from_disk()
             if alarm_id in self._alarms:
                 del self._alarms[alarm_id]
                 self._save_to_disk()
-                return True
-            return False
+                success = True
+            else:
+                success = False
+                
+        if success:
+            cancel_alarm_task(alarm_id)
+        return success
 
     def snooze_alarm(self, alarm_id: int, minutes: int = 5) -> Optional[Alarm]:
         """
-        Snoozes a ringing or pending alarm.
+        Snoozes a ringing or pending alarm, and registers a temporary OS snooze task.
         """
         with self._lock:
             self._load_from_disk()
@@ -128,18 +143,49 @@ class AlarmScheduler:
             if alarm:
                 alarm.snooze(minutes)
                 self._save_to_disk()
-                return alarm
-            return None
+                snooze_until = alarm.snooze_until
+            else:
+                snooze_until = None
+                
+        if snooze_until:
+            schedule_snooze_task(alarm_id, snooze_until)
+        return alarm
 
     def dismiss_alarm(self, alarm_id: int) -> Optional[Alarm]:
         """
-        Dismisses a ringing or snoozed alarm.
+        Dismisses a ringing/snoozed alarm, cleans up any active snooze tasks,
+        and deletes one-time OS-scheduled entries.
         """
         with self._lock:
             self._load_from_disk()
             alarm = self._alarms.get(alarm_id)
             if alarm:
                 alarm.dismiss()
+                self._save_to_disk()
+                is_recurring = len(alarm.days) > 0
+            else:
+                is_recurring = False
+                
+        if alarm:
+            cancel_snooze_task(alarm_id)
+            # One-time tasks can be fully deleted from OS since they won't repeat
+            if not is_recurring:
+                cancel_alarm_task(alarm_id)
+        return alarm
+
+    def ring_alarm(self, alarm_id: int) -> Optional[Alarm]:
+        """
+        Sets alarm status to RINGING programmatically when triggered via OS command.
+        """
+        with self._lock:
+            self._load_from_disk()
+            alarm = self._alarms.get(alarm_id)
+            if alarm:
+                if alarm.state in (AlarmState.DISMISSED, AlarmState.SNOOZED):
+                    return None
+                
+                alarm.state = AlarmState.RINGING
+                alarm.ring_start_time = datetime.datetime.now()
                 self._save_to_disk()
                 return alarm
             return None

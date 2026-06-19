@@ -1,7 +1,8 @@
 import sys
 import datetime
 import time
-from typing import List
+import threading
+from typing import List, Optional
 
 from alarm_clock.models import Alarm, AlarmState, parse_days
 from alarm_clock.scheduler import AlarmScheduler, parse_time
@@ -216,6 +217,113 @@ def run_daemon() -> None:
     finally:
         scheduler.stop()
 
+def get_non_blocking_input(stop_event: threading.Event) -> Optional[str]:
+    """
+    Reads user input from terminal in a non-blocking manner to watch the stop_event.
+    Uses msvcrt on Windows and select on Linux.
+    """
+    import platform
+    if platform.system() == "Windows":
+        import msvcrt
+        input_str = ""
+        while not stop_event.is_set():
+            if msvcrt.kbhit():
+                char = msvcrt.getwch()
+                if char in ('\r', '\n'):
+                    sys.stdout.write('\n')
+                    sys.stdout.flush()
+                    return input_str
+                elif char == '\b':  # Backspace
+                    if len(input_str) > 0:
+                        input_str = input_str[:-1]
+                        sys.stdout.write('\b \b')
+                        sys.stdout.flush()
+                elif ord(char) >= 32:  # Printable
+                    input_str += char
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+            time.sleep(0.05)
+        return None
+    else:
+        import select
+        while not stop_event.is_set():
+            ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+            if ready:
+                return sys.stdin.readline().strip()
+        return None
+
+def run_ring(alarm_id: int) -> None:
+    """
+    Plays audio buzzer and displays prompt when scheduled task triggers.
+    Executed in a short-lived subprocess task window.
+    """
+    enable_ansi_support()
+    scheduler = AlarmScheduler()
+    alarm = scheduler.ring_alarm(alarm_id)
+    if not alarm:
+        # Alarm deleted, or already handled in another process
+        return
+
+    # Start audio buzz
+    scheduler._sound_controller.start()
+    
+    TerminalUI.clear_screen()
+    TerminalUI.print_alarm_trigger(alarm)
+    
+    stop_event = threading.Event()
+    
+    def monitor_disk_state() -> None:
+        """
+        Monitors database file changes externally or handles sound expiry.
+        """
+        while not stop_event.is_set():
+            time.sleep(0.5)
+            alarms = {a.id: a for a in scheduler.get_all_alarms()}
+            if alarm_id not in alarms:
+                stop_event.set()
+                break
+                
+            current_alarm = alarms[alarm_id]
+            if current_alarm.state != AlarmState.RINGING:
+                stop_event.set()
+                break
+                
+            # Handle sound expiry (auto-dismiss)
+            if current_alarm.ring_start_time:
+                elapsed = (datetime.datetime.now() - current_alarm.ring_start_time).total_seconds()
+                if elapsed >= current_alarm.auto_dismiss_sec:
+                    scheduler.dismiss_alarm(alarm_id)
+                    stop_event.set()
+                    safe_print(f"\n{Colors.YELLOW}Alarm auto-dismissed after {current_alarm.auto_dismiss_sec} seconds.{Colors.RESET}")
+                    break
+                    
+    monitor_thread = threading.Thread(target=monitor_disk_state, name="RingMonitorThread", daemon=True)
+    monitor_thread.start()
+    
+    try:
+        while not stop_event.is_set():
+            sys.stdout.write("Press Enter to dismiss, or type 'snooze' to snooze: ")
+            sys.stdout.flush()
+            
+            user_input = get_non_blocking_input(stop_event)
+            if stop_event.is_set() or user_input is None:
+                break
+                
+            cmd = user_input.strip().lower()
+            if cmd == "snooze":
+                scheduler.snooze_alarm(alarm_id, 5)
+                safe_print(f"{Colors.GREEN}Alarm snoozed for 5 minutes.{Colors.RESET}")
+                break
+            else:
+                scheduler.dismiss_alarm(alarm_id)
+                safe_print(f"{Colors.GREEN}Alarm dismissed.{Colors.RESET}")
+                break
+    except KeyboardInterrupt:
+        scheduler.dismiss_alarm(alarm_id)
+    finally:
+        stop_event.set()
+        scheduler.stop()
+
 def print_cli_help() -> None:
     enable_ansi_support()
     TerminalUI.print_banner()
@@ -235,7 +343,7 @@ def print_cli_help() -> None:
   {Colors.GREEN}alarm-clock daemon{Colors.RESET}                                    - Run the background sound and time monitor
   {Colors.GREEN}alarm-clock help{Colors.RESET}                                      - Show this CLI command usage
 """
-    safe_print(help_text)
+    print(help_text)
 
 def run_interactive() -> None:
     """
@@ -299,6 +407,17 @@ def main() -> None:
             print_cli_help()
         elif cmd == "daemon":
             run_daemon()
+        elif cmd == "ring":
+            if args:
+                try:
+                    alarm_id = int(args[0])
+                    run_ring(alarm_id)
+                except ValueError:
+                    print("Error: Alarm ID must be an integer.")
+                    sys.exit(1)
+            else:
+                print("Error: Ring command requires an Alarm ID.")
+                sys.exit(1)
         else:
             scheduler = AlarmScheduler()
             if cmd == "add":
