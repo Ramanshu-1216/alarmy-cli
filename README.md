@@ -24,7 +24,8 @@ Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the
 - **Cross-Platform Audio alerts**:
   - Windows: Uses native `winsound.Beep`.
   - Linux/macOS: Uses terminal buzzer beeps (`\a`).
-- **Flexible alarm operations**: `add`, `list`, `remove`, `snooze`, and `dismiss`.
+- **Flexible Alarm Operations**: `add`, `list`, `remove`, `snooze`, and `dismiss`.
+  - Supports setting an alarm-specific default snooze limit (`--snooze-minutes`) which is automatically respected if no snooze duration is entered during rings.
 
 ---
 
@@ -97,7 +98,7 @@ When you add an alarm, it is registered automatically with the operating system.
 
 1. **Add an alarm**:
    ```bash
-   alarm-clock add 07:30 "Wake Up"
+   alarm-clock add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30
    ```
 2. **List alarms**:
    ```bash
@@ -107,6 +108,7 @@ When you add an alarm, it is registered automatically with the operating system.
    ```
    Press Enter to dismiss, or type 'snooze' to snooze:
    ```
+   *If you type `snooze`, it automatically snoozes for 8 minutes (respecting the custom snooze parameter).*
 4. **Remove an alarm** (cleans it up from both disk and OS task registries):
    ```bash
    alarm-clock remove 1
