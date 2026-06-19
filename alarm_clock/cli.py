@@ -340,6 +340,7 @@ def print_cli_help() -> None:
   {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}                               - Remove an alarm and exit
   {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}                     - Snooze a ringing alarm and exit
   {Colors.GREEN}alarm-clock dismiss <ID>{Colors.RESET}                              - Dismiss a ringing alarm and exit
+  {Colors.GREEN}alarm-clock clear{Colors.RESET}                                    - Wipes the database and cancels all OS tasks
   {Colors.GREEN}alarm-clock daemon{Colors.RESET}                                    - Run the background sound and time monitor
   {Colors.GREEN}alarm-clock help{Colors.RESET}                                      - Show this CLI command usage
 """
@@ -390,6 +391,9 @@ def run_interactive() -> None:
                 handle_snooze(scheduler, args)
             elif cmd == "dismiss":
                 handle_dismiss(scheduler, args)
+            elif cmd == "clear":
+                scheduler.clear_all_alarms()
+                safe_print(f"{Colors.GREEN}Success: Cleared all alarms and OS tasks.{Colors.RESET}")
             else:
                 safe_print(f"{Colors.RED}Unknown command: '{cmd}'. Type 'help' for a list of commands.{Colors.RESET}")
                 
@@ -418,6 +422,10 @@ def main() -> None:
             else:
                 print("Error: Ring command requires an Alarm ID.")
                 sys.exit(1)
+        elif cmd == "clear":
+            scheduler = AlarmScheduler()
+            scheduler.clear_all_alarms()
+            safe_print(f"{Colors.GREEN}Success: Cleared all alarms and OS tasks.{Colors.RESET}")
         else:
             scheduler = AlarmScheduler()
             if cmd == "add":

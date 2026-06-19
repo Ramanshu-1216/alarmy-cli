@@ -223,6 +223,26 @@ class TestAlarmScheduler(unittest.TestCase):
         self.scheduler.remove_alarm(alarm.id)
         self.mock_cancel.assert_called_once_with(alarm.id)
 
+    def test_clear_all_alarms(self):
+        # Add alarms
+        alarm1 = self.scheduler.add_alarm("10:00")
+        alarm2 = self.scheduler.add_alarm("11:00")
+        
+        self.assertTrue(os.path.exists(self.temp_db_path))
+        self.assertEqual(len(self.scheduler.get_all_alarms()), 2)
+        
+        # Clear database
+        self.scheduler.clear_all_alarms()
+        
+        # Verify alarms deleted from memory and OS cancellation run
+        self.assertEqual(len(self.scheduler.get_all_alarms()), 0)
+        self.mock_cancel.assert_any_call(alarm1.id)
+        self.mock_cancel.assert_any_call(alarm2.id)
+        
+        # Database file should be wiped from disk
+        self.assertFalse(os.path.exists(self.temp_db_path))
+
+
 # Patching _run_loop_cycle_for_testing helper onto AlarmScheduler for direct unit testing
 def _run_loop_cycle_for_testing(self):
     now = datetime.datetime.now()

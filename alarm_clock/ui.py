@@ -149,6 +149,7 @@ class TerminalUI:
   {Colors.GREEN}remove <ID>{Colors.RESET}             - Remove an alarm by its numerical ID
   {Colors.GREEN}snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm (default: 5 minutes)
   {Colors.GREEN}dismiss <ID>{Colors.RESET}            - Dismiss a ringing or active alarm
+  {Colors.GREEN}clear{Colors.RESET}                   - Wipes database and cancels all OS tasks
   {Colors.GREEN}help{Colors.RESET}                    - Show this menu
   {Colors.GREEN}exit{Colors.RESET} / {Colors.GREEN}quit{Colors.RESET}             - Quit the application
 """

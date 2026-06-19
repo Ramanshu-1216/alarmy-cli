@@ -6,6 +6,7 @@ import json
 from typing import Dict, List, Optional, Callable
 from alarm_clock.models import Alarm, AlarmState
 from alarm_clock.audio import AlarmSoundController
+from alarm_clock.logger import audit_log
 from alarm_clock.os_scheduler import (
     schedule_alarm_task, 
     cancel_alarm_task, 
@@ -114,6 +115,8 @@ class AlarmScheduler:
             
         # Hook into OS-native Task Scheduler
         schedule_alarm_task(alarm.id, alarm.time, alarm.days)
+        recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
+        audit_log(f"Alarm {alarm.id} added for {alarm.time.strftime('%H:%M')} (label: '{alarm.label}', type: {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s)")
         return alarm
 
     def remove_alarm(self, alarm_id: int) -> bool:
@@ -131,6 +134,7 @@ class AlarmScheduler:
                 
         if success:
             cancel_alarm_task(alarm_id)
+            audit_log(f"Alarm {alarm_id} removed.")
         return success
 
     def snooze_alarm(self, alarm_id: int, minutes: int = 5) -> Optional[Alarm]:
@@ -147,8 +151,9 @@ class AlarmScheduler:
             else:
                 snooze_until = None
                 
-        if snooze_until:
+        if snooze_until and alarm:
             schedule_snooze_task(alarm_id, snooze_until)
+            audit_log(f"Alarm {alarm_id} snoozed until {snooze_until.strftime('%H:%M:%S')} (snooze count: {alarm.snoozed_count})")
         return alarm
 
     def dismiss_alarm(self, alarm_id: int) -> Optional[Alarm]:
@@ -168,9 +173,9 @@ class AlarmScheduler:
                 
         if alarm:
             cancel_snooze_task(alarm_id)
-            # One-time tasks can be fully deleted from OS since they won't repeat
             if not is_recurring:
                 cancel_alarm_task(alarm_id)
+            audit_log(f"Alarm {alarm_id} dismissed.")
         return alarm
 
     def ring_alarm(self, alarm_id: int) -> Optional[Alarm]:
@@ -187,8 +192,29 @@ class AlarmScheduler:
                 alarm.state = AlarmState.RINGING
                 alarm.ring_start_time = datetime.datetime.now()
                 self._save_to_disk()
+                audit_log(f"Alarm {alarm_id} triggered (ringing).")
                 return alarm
             return None
+
+    def clear_all_alarms(self) -> None:
+        """
+        Cancels all OS tasks, empties memory list, and deletes the JSON database.
+        """
+        with self._lock:
+            self._load_from_disk()
+            # Cancel all scheduled OS tasks
+            for alarm in self._alarms.values():
+                cancel_alarm_task(alarm.id)
+                
+            self._alarms = {}
+            self._next_id = 1
+            
+            if os.path.exists(self.storage_path):
+                try:
+                    os.remove(self.storage_path)
+                except Exception:
+                    pass
+            audit_log("Alarms database cleared.")
 
     def get_all_alarms(self) -> List[Alarm]:
         """
@@ -239,6 +265,7 @@ class AlarmScheduler:
                             if elapsed >= alarm.auto_dismiss_sec:
                                 alarm.dismiss()
                                 any_state_changed = True
+                                audit_log(f"Alarm {alarm.id} auto-dismissed after reaching {alarm.auto_dismiss_sec}s limit.")
                                 
                     # 2. Handle auto-reset for DISMISSED recurring alarms
                     elif alarm.state == AlarmState.DISMISSED and alarm.days:
@@ -252,6 +279,7 @@ class AlarmScheduler:
                         alarm.state = AlarmState.RINGING
                         alarm.ring_start_time = now
                         any_state_changed = True
+                        audit_log(f"Alarm {alarm.id} triggered (ringing).")
                         if self._on_trigger_callback:
                             threading.Thread(
                                 target=self._on_trigger_callback, 
