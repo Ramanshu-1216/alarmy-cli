@@ -92,16 +92,16 @@ class AlarmScheduler:
                     pass
             raise e
 
-    def add_alarm(self, time_str: str, label: str = "Alarm") -> Alarm:
+    def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60) -> Alarm:
         """
-        Parses time string, creates an alarm, and saves it thread-safely.
+        Parses time string, creates an alarm with recurrence/dismiss options, and saves it thread-safely.
         """
         time_obj = parse_time(time_str)
         with self._lock:
             self._load_from_disk()
             alarm_id = self._next_id
             self._next_id += 1
-            alarm = Alarm(alarm_id, time_obj, label)
+            alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec)
             self._alarms[alarm_id] = alarm
             self._save_to_disk()
             return alarm
@@ -186,25 +186,32 @@ class AlarmScheduler:
                 
                 any_state_changed = False
                 for alarm in self._alarms.values():
-                    if alarm.should_trigger(now):
-                        if alarm.state == AlarmState.PENDING:
-                            alarm.state = AlarmState.RINGING
+                    # 1. Handle auto-dismiss for RINGING alarms
+                    if alarm.state == AlarmState.RINGING:
+                        if alarm.ring_start_time:
+                            elapsed = (now - alarm.ring_start_time).total_seconds()
+                            if elapsed >= alarm.auto_dismiss_sec:
+                                alarm.dismiss()
+                                any_state_changed = True
+                                
+                    # 2. Handle auto-reset for DISMISSED recurring alarms
+                    elif alarm.state == AlarmState.DISMISSED and alarm.days:
+                        now_time = now.time()
+                        if now_time.hour != alarm.time.hour or now_time.minute != alarm.time.minute:
+                            alarm.reset()
                             any_state_changed = True
-                            if self._on_trigger_callback:
-                                threading.Thread(
-                                    target=self._on_trigger_callback, 
-                                    args=(alarm,), 
-                                    daemon=True
-                                ).start()
-                        elif alarm.state == AlarmState.SNOOZED:
-                            alarm.state = AlarmState.RINGING
-                            any_state_changed = True
-                            if self._on_trigger_callback:
-                                threading.Thread(
-                                    target=self._on_trigger_callback, 
-                                    args=(alarm,), 
-                                    daemon=True
-                                ).start()
+                            
+                    # 3. Check if alarm should ring (PENDING or SNOOZED triggers)
+                    elif alarm.should_trigger(now):
+                        alarm.state = AlarmState.RINGING
+                        alarm.ring_start_time = now
+                        any_state_changed = True
+                        if self._on_trigger_callback:
+                            threading.Thread(
+                                target=self._on_trigger_callback, 
+                                args=(alarm,), 
+                                daemon=True
+                            ).start()
                 
                 if any_state_changed:
                     self._save_to_disk()

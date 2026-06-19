@@ -3,9 +3,9 @@ import datetime
 import time
 from typing import List
 
-from alarm_clock.models import Alarm, AlarmState
+from alarm_clock.models import Alarm, AlarmState, parse_days
 from alarm_clock.scheduler import AlarmScheduler, parse_time
-from alarm_clock.ui import TerminalUI, Colors, enable_ansi_support
+from alarm_clock.ui import TerminalUI, Colors, enable_ansi_support, safe_print
 
 def on_alarm_trigger(alarm: Alarm) -> None:
     """
@@ -15,20 +15,129 @@ def on_alarm_trigger(alarm: Alarm) -> None:
     sys.stdout.write(f"\n({datetime.datetime.now().strftime('%H:%M:%S')}) alarm-clock > ")
     sys.stdout.flush()
 
-def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
-    if not args:
-        print(f"{Colors.RED}Error: 'add' command requires a time (HH:MM).{Colors.RESET}")
-        print("Usage: add <HH:MM> [label]")
-        return
+def run_add_wizard(scheduler: AlarmScheduler) -> None:
+    """
+    Guides the user step-by-step to create an alarm with input validation.
+    """
+    safe_print(f"\n{Colors.CYAN}{Colors.BOLD}--- Interactive Alarm Setup Wizard ---{Colors.RESET}")
     
+    # 1. Prompt Time
+    while True:
+        try:
+            time_input = input("Enter alarm time (HH:MM or HH:MM PM) [e.g., 08:30]: ").strip()
+            if not time_input:
+                safe_print(f"{Colors.RED}Time cannot be empty.{Colors.RESET}")
+                continue
+            parse_time(time_input)
+            break
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
+    # 2. Prompt Label
+    try:
+        label_input = input("Enter alarm label [default: 'Alarm']: ").strip()
+        label = label_input if label_input else "Alarm"
+    except KeyboardInterrupt:
+        safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+        return
+
+    # 3. Prompt Days (Recurrence)
+    while True:
+        try:
+            days_input = input("Repeat on days (e.g. Mon,Wed,Fri, or 'daily', or press Enter for Once): ").strip()
+            days = parse_days(days_input)
+            break
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
+    # 4. Prompt Auto-dismiss Seconds
+    while True:
+        try:
+            dismiss_input = input("Auto-dismiss duration in seconds [default: 60]: ").strip()
+            if not dismiss_input:
+                auto_dismiss = 60
+                break
+            auto_dismiss = int(dismiss_input)
+            if auto_dismiss <= 0:
+                safe_print(f"{Colors.RED}Duration must be a positive integer.{Colors.RESET}")
+                continue
+            break
+        except ValueError:
+            safe_print(f"{Colors.RED}Please enter a valid integer.{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
+    # Create the alarm
+    try:
+        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss)
+        recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
+        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss after {alarm.auto_dismiss_sec}s.{Colors.RESET}\n")
+    except Exception as e:
+        safe_print(f"{Colors.RED}Error creating alarm: {e}{Colors.RESET}")
+
+def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
+    # If no arguments, fallback to interactive setup wizard
+    if not args:
+        run_add_wizard(scheduler)
+        return
+
+    days = []
+    auto_dismiss = 60
+
+    # Parse optional --days flag
+    if "--days" in args:
+        try:
+            idx = args.index("--days")
+            if idx + 1 < len(args):
+                days_str = args[idx + 1]
+                days = parse_days(days_str)
+                args.pop(idx + 1)
+                args.pop(idx)
+            else:
+                safe_print(f"{Colors.RED}Error: --days flag requires a value (e.g. Mon,Wed).{Colors.RESET}")
+                return
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error parsing --days: {e}{Colors.RESET}")
+            return
+
+    # Parse optional --auto-dismiss flag
+    if "--auto-dismiss" in args:
+        try:
+            idx = args.index("--auto-dismiss")
+            if idx + 1 < len(args):
+                dismiss_str = args[idx + 1]
+                auto_dismiss = int(dismiss_str)
+                if auto_dismiss <= 0:
+                    raise ValueError("Duration must be a positive integer.")
+                args.pop(idx + 1)
+                args.pop(idx)
+            else:
+                safe_print(f"{Colors.RED}Error: --auto-dismiss flag requires an integer value.{Colors.RESET}")
+                return
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error parsing --auto-dismiss: {e}{Colors.RESET}")
+            return
+
+    if not args:
+        safe_print(f"{Colors.RED}Error: 'add' command requires a time (HH:MM).{Colors.RESET}")
+        return
+
     time_str = args[0]
     label = " ".join(args[1:]) if len(args) > 1 else "Alarm"
     
     try:
-        alarm = scheduler.add_alarm(time_str, label)
-        print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}'){Colors.RESET}")
+        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss)
+        recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
+        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss after {alarm.auto_dismiss_sec}s.{Colors.RESET}")
     except ValueError as e:
-        print(f"{Colors.RED}Error: {e}{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
 
 def handle_list(scheduler: AlarmScheduler) -> None:
     alarms = scheduler.get_all_alarms()
@@ -38,22 +147,22 @@ def handle_list(scheduler: AlarmScheduler) -> None:
 
 def handle_remove(scheduler: AlarmScheduler, args: List[str]) -> None:
     if not args:
-        print(f"{Colors.RED}Error: 'remove' command requires an alarm ID.{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: 'remove' command requires an alarm ID.{Colors.RESET}")
         return
     
     try:
         alarm_id = int(args[0])
         success = scheduler.remove_alarm(alarm_id)
         if success:
-            print(f"{Colors.GREEN}Success: Removed alarm {alarm_id}.{Colors.RESET}")
+            safe_print(f"{Colors.GREEN}Success: Removed alarm {alarm_id}.{Colors.RESET}")
         else:
-            print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
+            safe_print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
     except ValueError:
-        print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
 
 def handle_snooze(scheduler: AlarmScheduler, args: List[str]) -> None:
     if not args:
-        print(f"{Colors.RED}Error: 'snooze' command requires an alarm ID.{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: 'snooze' command requires an alarm ID.{Colors.RESET}")
         return
     
     try:
@@ -63,26 +172,26 @@ def handle_snooze(scheduler: AlarmScheduler, args: List[str]) -> None:
         alarm = scheduler.snooze_alarm(alarm_id, minutes)
         if alarm:
             resume_time = alarm.snooze_until.strftime('%H:%M:%S')
-            print(f"{Colors.GREEN}Success: Alarm {alarm_id} snoozed for {minutes} minutes (until {resume_time}).{Colors.RESET}")
+            safe_print(f"{Colors.GREEN}Success: Alarm {alarm_id} snoozed for {minutes} minutes (until {resume_time}).{Colors.RESET}")
         else:
-            print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
+            safe_print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
     except ValueError:
-        print(f"{Colors.RED}Error: Invalid arguments. Usage: snooze <ID> [minutes]{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: Invalid arguments. Usage: snooze <ID> [minutes]{Colors.RESET}")
 
 def handle_dismiss(scheduler: AlarmScheduler, args: List[str]) -> None:
     if not args:
-        print(f"{Colors.RED}Error: 'dismiss' command requires an alarm ID.{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: 'dismiss' command requires an alarm ID.{Colors.RESET}")
         return
     
     try:
         alarm_id = int(args[0])
         alarm = scheduler.dismiss_alarm(alarm_id)
         if alarm:
-            print(f"{Colors.GREEN}Success: Alarm {alarm_id} dismissed.{Colors.RESET}")
+            safe_print(f"{Colors.GREEN}Success: Alarm {alarm_id} dismissed.{Colors.RESET}")
         else:
-            print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
+            safe_print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
     except ValueError:
-        print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
+        safe_print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
 
 def run_daemon() -> None:
     """
@@ -90,8 +199,8 @@ def run_daemon() -> None:
     Monitors database JSON, updates states, and plays audio when alarms trigger.
     """
     enable_ansi_support()
-    print(f"{Colors.CYAN}Starting Alarm Clock Daemon...{Colors.RESET}")
-    print(f"{Colors.DIM}Monitoring alarms. Press Ctrl+C to terminate.{Colors.RESET}\n")
+    safe_print(f"{Colors.CYAN}Starting Alarm Clock Daemon...{Colors.RESET}")
+    safe_print(f"{Colors.DIM}Monitoring alarms. Press Ctrl+C to terminate.{Colors.RESET}\n")
     
     def daemon_trigger_callback(alarm: Alarm) -> None:
         TerminalUI.print_alarm_trigger(alarm)
@@ -103,7 +212,7 @@ def run_daemon() -> None:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
-        print(f"\n{Colors.CYAN}Stopping Daemon. Goodbye!{Colors.RESET}")
+        safe_print(f"\n{Colors.CYAN}Stopping Daemon. Goodbye!{Colors.RESET}")
     finally:
         scheduler.stop()
 
@@ -112,16 +221,21 @@ def print_cli_help() -> None:
     TerminalUI.print_banner()
     help_text = f"""
 {Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
-  {Colors.GREEN}alarm-clock{Colors.RESET}                            - Launches the interactive console
-  {Colors.GREEN}alarm-clock add <HH:MM> [label]{Colors.RESET}    - Add a new alarm and exit
-  {Colors.GREEN}alarm-clock list{Colors.RESET}                    - List all alarms and exit
-  {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}             - Remove an alarm and exit
-  {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm and exit
-  {Colors.GREEN}alarm-clock dismiss <ID>{Colors.RESET}            - Dismiss a ringing alarm and exit
-  {Colors.GREEN}alarm-clock daemon{Colors.RESET}                  - Run the background sound and time monitor
-  {Colors.GREEN}alarm-clock help{Colors.RESET}                    - Show this CLI command usage
+  {Colors.GREEN}alarm-clock{Colors.RESET}                                      - Launches the interactive console
+  {Colors.GREEN}alarm-clock add{Colors.RESET}                                      - Start the interactive Setup Wizard
+  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s]{Colors.RESET}
+                                                    - Create a new alarm directly
+                                                      Flags:
+                                                        --days: repeat on days (e.g. Mon,Wed or daily)
+                                                        --auto-dismiss: seconds limit (e.g. 30)
+  {Colors.GREEN}alarm-clock list{Colors.RESET}                                     - List all alarms and exit
+  {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}                               - Remove an alarm and exit
+  {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}                     - Snooze a ringing alarm and exit
+  {Colors.GREEN}alarm-clock dismiss <ID>{Colors.RESET}                              - Dismiss a ringing alarm and exit
+  {Colors.GREEN}alarm-clock daemon{Colors.RESET}                                    - Run the background sound and time monitor
+  {Colors.GREEN}alarm-clock help{Colors.RESET}                                      - Show this CLI command usage
 """
-    print(help_text)
+    safe_print(help_text)
 
 def run_interactive() -> None:
     """
@@ -133,7 +247,7 @@ def run_interactive() -> None:
     
     TerminalUI.clear_screen()
     TerminalUI.print_banner()
-    print(f"{Colors.CYAN}Welcome to the CLI Alarm Clock! (Interactive Mode){Colors.RESET}")
+    safe_print(f"{Colors.CYAN}Welcome to the CLI Alarm Clock! (Interactive Mode){Colors.RESET}")
     TerminalUI.print_help()
     
     try:
@@ -154,7 +268,7 @@ def run_interactive() -> None:
             args = parts[1:]
             
             if cmd in ("exit", "quit"):
-                print(f"\n{Colors.CYAN}Exiting Alarm Clock. Goodbye!{Colors.RESET}")
+                safe_print(f"\n{Colors.CYAN}Exiting Alarm Clock. Goodbye!{Colors.RESET}")
                 break
             elif cmd == "help":
                 TerminalUI.print_help()
@@ -169,15 +283,14 @@ def run_interactive() -> None:
             elif cmd == "dismiss":
                 handle_dismiss(scheduler, args)
             else:
-                print(f"{Colors.RED}Unknown command: '{cmd}'. Type 'help' for a list of commands.{Colors.RESET}")
+                safe_print(f"{Colors.RED}Unknown command: '{cmd}'. Type 'help' for a list of commands.{Colors.RESET}")
                 
     except KeyboardInterrupt:
-        print(f"\n\n{Colors.CYAN}Session interrupted. Exiting Alarm Clock. Goodbye!{Colors.RESET}")
+        safe_print(f"\n\n{Colors.CYAN}Session interrupted. Exiting Alarm Clock. Goodbye!{Colors.RESET}")
     finally:
         scheduler.stop()
 
 def main() -> None:
-    # Check if run with command-line arguments (Non-interactive / Single-command mode)
     if len(sys.argv) > 1:
         cmd = sys.argv[1].lower()
         args = sys.argv[2:]
@@ -199,10 +312,9 @@ def main() -> None:
             elif cmd == "dismiss":
                 handle_dismiss(scheduler, args)
             else:
-                print(f"Unknown command: '{cmd}'. Type 'alarm-clock help' for usage.")
+                safe_print(f"Unknown command: '{cmd}'. Type 'alarm-clock help' for usage.")
                 sys.exit(1)
     else:
-        # Fall back to Interactive Mode
         run_interactive()
 
 if __name__ == "__main__":

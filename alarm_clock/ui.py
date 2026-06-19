@@ -85,8 +85,8 @@ class TerminalUI:
             return
 
         # Print Table Headers
-        safe_print(f"{Colors.BOLD}{'ID':<6} | {'TIME':<8} | {'LABEL':<20} | {'STATE':<12} | {'DETAILS'}{Colors.RESET}")
-        safe_print(f"{Colors.DIM}{'-'*75}{Colors.RESET}")
+        safe_print(f"{Colors.BOLD}{'ID':<6} | {'TIME':<8} | {'LABEL':<18} | {'RECURRING':<15} | {'STATE':<10} | {'DETAILS'}{Colors.RESET}")
+        safe_print(f"{Colors.DIM}{'-'*85}{Colors.RESET}")
 
         for alarm in alarms:
             # Color code based on alarm state
@@ -99,7 +99,12 @@ class TerminalUI:
             else:
                 state_str = f"{Colors.DIM}DISMISSED{Colors.RESET}"
 
-            # Detail rendering (e.g. snooze count, snooze until)
+            # Recurrence text
+            days_str = ",".join([d[:3] for d in alarm.days]) if alarm.days else "Once"
+            if len(days_str) > 15:
+                days_str = days_str[:12] + "..."
+
+            # Detail rendering (e.g. snooze count, auto-dismiss, ring expiry)
             details = ""
             if alarm.state == AlarmState.SNOOZED and alarm.snooze_until:
                 time_rem = alarm.snooze_until - datetime.datetime.now()
@@ -107,12 +112,12 @@ class TerminalUI:
                 min_rem = sec_rem // 60
                 sec_rem %= 60
                 details = f"Resumes in {min_rem:02d}m {sec_rem:02d}s (Snoozed {alarm.snoozed_count}x)"
-            elif alarm.state == AlarmState.DISMISSED:
-                details = "Inactive"
-            elif alarm.state == AlarmState.PENDING:
-                details = "Active"
+            elif alarm.state == AlarmState.RINGING:
+                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s limit"
+            else:
+                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s"
 
-            safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<20} | {state_str:<12} | {Colors.DIM}{details}{Colors.RESET}")
+            safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<18} | {days_str:<15} | {state_str:<10} | {Colors.DIM}{details}{Colors.RESET}")
         safe_print()
 
     @staticmethod
