@@ -1,6 +1,8 @@
 import datetime
 import threading
 import time
+import os
+import json
 from typing import Dict, List, Optional, Callable
 from alarm_clock.models import Alarm, AlarmState
 from alarm_clock.audio import AlarmSoundController
@@ -21,9 +23,10 @@ def parse_time(time_str: str) -> datetime.time:
 class AlarmScheduler:
     """
     Thread-safe manager for scheduling, monitoring, and triggering alarms.
-    Runs a background thread to check alarm states and trigger audio alerts.
+    Saves and synchronizes state via a local JSON file to support multi-process CLI usage.
     """
-    def __init__(self, on_trigger_callback: Optional[Callable[[Alarm], None]] = None):
+    def __init__(self, on_trigger_callback: Optional[Callable[[Alarm], None]] = None, storage_path: Optional[str] = None):
+        self.storage_path = storage_path or os.path.expanduser("~/.cli_alarms.json")
         self._alarms: Dict[int, Alarm] = {}
         self._next_id = 1
         self._lock = threading.Lock()
@@ -33,17 +36,74 @@ class AlarmScheduler:
         
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        
+        # Load initial state
+        with self._lock:
+            self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """
+        Loads alarms from the JSON file. Assumes lock is held.
+        """
+        if not os.path.exists(self.storage_path):
+            self._alarms = {}
+            self._next_id = 1
+            return
+
+        try:
+            with open(self.storage_path, "r") as f:
+                data = json.load(f)
+            
+            alarms = {}
+            max_id = 0
+            for item in data:
+                alarm = Alarm.from_dict(item)
+                alarms[alarm.id] = alarm
+                if alarm.id > max_id:
+                    max_id = alarm.id
+            self._alarms = alarms
+            self._next_id = max_id + 1
+        except Exception:
+            # Fallback gracefully if file is empty or corrupted
+            self._alarms = {}
+            self._next_id = 1
+
+    def _save_to_disk(self) -> None:
+        """
+        Saves alarms atomically to the JSON file using a temp file. Assumes lock is held.
+        """
+        temp_path = self.storage_path + ".tmp"
+        try:
+            dir_name = os.path.dirname(self.storage_path)
+            if dir_name and not os.path.exists(dir_name):
+                os.makedirs(dir_name, exist_ok=True)
+                
+            with open(temp_path, "w") as f:
+                data = [alarm.to_dict() for alarm in self._alarms.values()]
+                json.dump(data, f, indent=4)
+            
+            # Atomic swap
+            os.replace(temp_path, self.storage_path)
+        except Exception as e:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            raise e
 
     def add_alarm(self, time_str: str, label: str = "Alarm") -> Alarm:
         """
-        Parses time string, creates an alarm, and adds it thread-safely.
+        Parses time string, creates an alarm, and saves it thread-safely.
         """
         time_obj = parse_time(time_str)
         with self._lock:
+            self._load_from_disk()
             alarm_id = self._next_id
             self._next_id += 1
             alarm = Alarm(alarm_id, time_obj, label)
             self._alarms[alarm_id] = alarm
+            self._save_to_disk()
             return alarm
 
     def remove_alarm(self, alarm_id: int) -> bool:
@@ -51,39 +111,45 @@ class AlarmScheduler:
         Removes an alarm by ID. Returns True if found and removed.
         """
         with self._lock:
+            self._load_from_disk()
             if alarm_id in self._alarms:
-                # If the deleted alarm was ringing, the run loop will automatically turn off sound
                 del self._alarms[alarm_id]
+                self._save_to_disk()
                 return True
             return False
 
     def snooze_alarm(self, alarm_id: int, minutes: int = 5) -> Optional[Alarm]:
         """
-        Snoozes a ringing or pending alarm. Returns the Alarm if found.
+        Snoozes a ringing or pending alarm.
         """
         with self._lock:
+            self._load_from_disk()
             alarm = self._alarms.get(alarm_id)
             if alarm:
                 alarm.snooze(minutes)
+                self._save_to_disk()
                 return alarm
             return None
 
     def dismiss_alarm(self, alarm_id: int) -> Optional[Alarm]:
         """
-        Dismisses a ringing or snoozed alarm. Returns the Alarm if found.
+        Dismisses a ringing or snoozed alarm.
         """
         with self._lock:
+            self._load_from_disk()
             alarm = self._alarms.get(alarm_id)
             if alarm:
                 alarm.dismiss()
+                self._save_to_disk()
                 return alarm
             return None
 
     def get_all_alarms(self) -> List[Alarm]:
         """
-        Returns a copy of all alarms sorted by scheduled time.
+        Returns a copy of all alarms loaded from disk and sorted by time.
         """
         with self._lock:
+            self._load_from_disk()
             return sorted(list(self._alarms.values()), key=lambda a: a.time)
 
     def start(self) -> None:
@@ -110,23 +176,20 @@ class AlarmScheduler:
     def _run(self) -> None:
         """
         Background monitoring loop that runs every second to check if any alarms need to ring.
+        Reloads database state from disk each cycle to sync with the single-command CLI.
         """
-        last_minute = -1
         while not self._stop_event.is_set():
             now = datetime.datetime.now()
             
             with self._lock:
+                self._load_from_disk()
+                
+                any_state_changed = False
                 for alarm in self._alarms.values():
-                    # 1. Check if alarm should ring (handles PENDING and SNOOZED triggers)
                     if alarm.should_trigger(now):
-                        # For PENDING state alarms, make sure we only trigger once per minute to avoid re-triggering
                         if alarm.state == AlarmState.PENDING:
-                            # To prevent immediate re-triggering within the same minute,
-                            # we can mark it as RINGING. But we must be careful:
-                            # If it triggers, it enters RINGING. If the user dismisses it in the SAME minute,
-                            # we don't want it to re-trigger.
-                            # So a dismissed alarm should not trigger again on the same day unless reset.
                             alarm.state = AlarmState.RINGING
+                            any_state_changed = True
                             if self._on_trigger_callback:
                                 threading.Thread(
                                     target=self._on_trigger_callback, 
@@ -135,15 +198,18 @@ class AlarmScheduler:
                                 ).start()
                         elif alarm.state == AlarmState.SNOOZED:
                             alarm.state = AlarmState.RINGING
+                            any_state_changed = True
                             if self._on_trigger_callback:
                                 threading.Thread(
                                     target=self._on_trigger_callback, 
                                     args=(alarm,), 
                                     daemon=True
                                 ).start()
+                
+                if any_state_changed:
+                    self._save_to_disk()
             
-            # 2. Manage the audio alarm state
-            # If any alarm is in RINGING state, trigger the buzzer
+            # Manage sound controller state
             ringing_alarms = [a for a in self.get_all_alarms() if a.state == AlarmState.RINGING]
             if ringing_alarms:
                 self._sound_controller.start()

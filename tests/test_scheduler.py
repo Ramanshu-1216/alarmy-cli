@@ -1,5 +1,7 @@
 import unittest
 import datetime
+import tempfile
+import os
 from unittest.mock import MagicMock, patch
 
 from alarm_clock.models import Alarm, AlarmState
@@ -39,11 +41,9 @@ class TestAlarmModel(unittest.TestCase):
         t = datetime.time(8, 30)
         alarm = Alarm(1, t)
         
-        # Test exact match
         now_match = datetime.datetime(2026, 6, 19, 8, 30, 15)
         self.assertTrue(alarm.should_trigger(now_match))
         
-        # Test mismatch
         now_mismatch = datetime.datetime(2026, 6, 19, 8, 29, 59)
         self.assertFalse(alarm.should_trigger(now_mismatch))
 
@@ -51,17 +51,14 @@ class TestAlarmModel(unittest.TestCase):
         t = datetime.time(8, 30)
         alarm = Alarm(1, t)
         
-        # Snooze for 5 minutes
         snooze_time = alarm.snooze(5)
         self.assertEqual(alarm.state, AlarmState.SNOOZED)
         self.assertEqual(alarm.snoozed_count, 1)
         self.assertIsNotNone(alarm.snooze_until)
         
-        # Before snooze elapsed
         now_before = snooze_time - datetime.timedelta(seconds=1)
         self.assertFalse(alarm.should_trigger(now_before))
         
-        # After snooze elapsed
         now_after = snooze_time + datetime.timedelta(seconds=1)
         self.assertTrue(alarm.should_trigger(now_after))
 
@@ -82,12 +79,43 @@ class TestAlarmModel(unittest.TestCase):
         self.assertIsNone(alarm.snooze_until)
         self.assertEqual(alarm.snoozed_count, 0)
 
+    def test_json_serialization(self):
+        t = datetime.time(12, 30, 45)
+        alarm = Alarm(42, t, "Eat Lunch")
+        alarm.snooze(15)
+        
+        serialized = alarm.to_dict()
+        self.assertEqual(serialized["id"], 42)
+        self.assertEqual(serialized["time"], "12:30:45")
+        self.assertEqual(serialized["label"], "Eat Lunch")
+        self.assertEqual(serialized["state"], "SNOOZED")
+        self.assertIsNotNone(serialized["snooze_until"])
+        self.assertEqual(serialized["snoozed_count"], 1)
+
+        deserialized = Alarm.from_dict(serialized)
+        self.assertEqual(deserialized.id, alarm.id)
+        self.assertEqual(deserialized.time, alarm.time)
+        self.assertEqual(deserialized.label, alarm.label)
+        self.assertEqual(deserialized.state, alarm.state)
+        self.assertEqual(deserialized.snooze_until, alarm.snooze_until)
+        self.assertEqual(deserialized.snoozed_count, alarm.snoozed_count)
+
 class TestAlarmScheduler(unittest.TestCase):
     def setUp(self):
-        self.scheduler = AlarmScheduler()
+        # Create a unique temporary file path for scheduler persistence tests
+        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp()
+        # Close the file descriptor, scheduler will manage open/close
+        os.close(self.temp_db_fd)
+        
+        self.scheduler = AlarmScheduler(storage_path=self.temp_db_path)
 
     def tearDown(self):
         self.scheduler.stop()
+        if os.path.exists(self.temp_db_path):
+            try:
+                os.remove(self.temp_db_path)
+            except Exception:
+                pass
 
     def test_add_and_get_alarms(self):
         alarm1 = self.scheduler.add_alarm("10:00", "Morning Alarm")
@@ -95,7 +123,6 @@ class TestAlarmScheduler(unittest.TestCase):
         
         alarms = self.scheduler.get_all_alarms()
         self.assertEqual(len(alarms), 2)
-        # Should be sorted by time (08:00 first, then 10:00)
         self.assertEqual(alarms[0].id, alarm2.id)
         self.assertEqual(alarms[1].id, alarm1.id)
 
@@ -107,20 +134,37 @@ class TestAlarmScheduler(unittest.TestCase):
         self.assertTrue(success)
         self.assertEqual(len(self.scheduler.get_all_alarms()), 0)
         
-        # Remove non-existent
         fail = self.scheduler.remove_alarm(999)
         self.assertFalse(fail)
 
     def test_snooze_and_dismiss_scheduler(self):
         alarm = self.scheduler.add_alarm("12:00")
         
-        # Test dismiss
         self.scheduler.dismiss_alarm(alarm.id)
-        self.assertEqual(alarm.state, AlarmState.DISMISSED)
+        alarms = self.scheduler.get_all_alarms()
+        self.assertEqual(alarms[0].state, AlarmState.DISMISSED)
         
-        # Test snooze
         self.scheduler.snooze_alarm(alarm.id, 10)
-        self.assertEqual(alarm.state, AlarmState.SNOOZED)
+        alarms = self.scheduler.get_all_alarms()
+        self.assertEqual(alarms[0].state, AlarmState.SNOOZED)
+
+    def test_persistence_between_instances(self):
+        # Add alarm to self.scheduler (points to temp file)
+        alarm1 = self.scheduler.add_alarm("15:45", "Test Persistence")
+        self.scheduler.snooze_alarm(alarm1.id, 5)
+        
+        # Instantiate a new scheduler pointing to same file path
+        new_scheduler = AlarmScheduler(storage_path=self.temp_db_path)
+        loaded_alarms = new_scheduler.get_all_alarms()
+        
+        # Verify the saved state is correctly reloaded
+        self.assertEqual(len(loaded_alarms), 1)
+        loaded = loaded_alarms[0]
+        self.assertEqual(loaded.id, alarm1.id)
+        self.assertEqual(loaded.time, alarm1.time)
+        self.assertEqual(loaded.label, alarm1.label)
+        self.assertEqual(loaded.state, AlarmState.SNOOZED)
+        self.assertIsNotNone(loaded.snooze_until)
 
 if __name__ == "__main__":
     unittest.main()

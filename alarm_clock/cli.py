@@ -1,6 +1,6 @@
 import sys
 import datetime
-import argparse
+import time
 from typing import List
 
 from alarm_clock.models import Alarm, AlarmState
@@ -9,11 +9,9 @@ from alarm_clock.ui import TerminalUI, Colors, enable_ansi_support
 
 def on_alarm_trigger(alarm: Alarm) -> None:
     """
-    Callback executed when an alarm fires.
+    Callback executed when an alarm fires during interactive mode.
     """
-    # Print warning banner immediately to stdout
     TerminalUI.print_alarm_trigger(alarm)
-    # Reprompt indicator (since standard input is active, we print a fresh line to prompt the user)
     sys.stdout.write(f"\n({datetime.datetime.now().strftime('%H:%M:%S')}) alarm-clock > ")
     sys.stdout.flush()
 
@@ -34,7 +32,6 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
 
 def handle_list(scheduler: AlarmScheduler) -> None:
     alarms = scheduler.get_all_alarms()
-    # Print status bar with current time first
     now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     TerminalUI.print_status_bar(now_str)
     TerminalUI.print_alarms_table(alarms)
@@ -63,7 +60,6 @@ def handle_snooze(scheduler: AlarmScheduler, args: List[str]) -> None:
         alarm_id = int(args[0])
         minutes = int(args[1]) if len(args) > 1 else 5
         
-        # Verify the alarm exists
         alarm = scheduler.snooze_alarm(alarm_id, minutes)
         if alarm:
             resume_time = alarm.snooze_until.strftime('%H:%M:%S')
@@ -88,16 +84,56 @@ def handle_dismiss(scheduler: AlarmScheduler, args: List[str]) -> None:
     except ValueError:
         print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
 
-def main() -> None:
+def run_daemon() -> None:
+    """
+    Runs the Alarm Scheduler process indefinitely in the foreground.
+    Monitors database JSON, updates states, and plays audio when alarms trigger.
+    """
     enable_ansi_support()
+    print(f"{Colors.CYAN}Starting Alarm Clock Daemon...{Colors.RESET}")
+    print(f"{Colors.DIM}Monitoring alarms. Press Ctrl+C to terminate.{Colors.RESET}\n")
     
-    # Initialize scheduler with trigger callback
+    def daemon_trigger_callback(alarm: Alarm) -> None:
+        TerminalUI.print_alarm_trigger(alarm)
+        
+    scheduler = AlarmScheduler(on_trigger_callback=daemon_trigger_callback)
+    scheduler.start()
+    
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"\n{Colors.CYAN}Stopping Daemon. Goodbye!{Colors.RESET}")
+    finally:
+        scheduler.stop()
+
+def print_cli_help() -> None:
+    enable_ansi_support()
+    TerminalUI.print_banner()
+    help_text = f"""
+{Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
+  {Colors.GREEN}alarm-clock{Colors.RESET}                            - Launches the interactive console
+  {Colors.GREEN}alarm-clock add <HH:MM> [label]{Colors.RESET}    - Add a new alarm and exit
+  {Colors.GREEN}alarm-clock list{Colors.RESET}                    - List all alarms and exit
+  {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}             - Remove an alarm and exit
+  {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm and exit
+  {Colors.GREEN}alarm-clock dismiss <ID>{Colors.RESET}            - Dismiss a ringing alarm and exit
+  {Colors.GREEN}alarm-clock daemon{Colors.RESET}                  - Run the background sound and time monitor
+  {Colors.GREEN}alarm-clock help{Colors.RESET}                    - Show this CLI command usage
+"""
+    print(help_text)
+
+def run_interactive() -> None:
+    """
+    Runs the interactive menu loop.
+    """
+    enable_ansi_support()
     scheduler = AlarmScheduler(on_trigger_callback=on_alarm_trigger)
     scheduler.start()
     
     TerminalUI.clear_screen()
     TerminalUI.print_banner()
-    print(f"{Colors.CYAN}Welcome to the CLI Alarm Clock!{Colors.RESET}")
+    print(f"{Colors.CYAN}Welcome to the CLI Alarm Clock! (Interactive Mode){Colors.RESET}")
     TerminalUI.print_help()
     
     try:
@@ -108,7 +144,6 @@ def main() -> None:
             try:
                 cmd_line = input(prompt).strip()
             except EOFError:
-                # Handle standard stream closure (e.g. pipe redirection)
                 break
                 
             if not cmd_line:
@@ -140,6 +175,35 @@ def main() -> None:
         print(f"\n\n{Colors.CYAN}Session interrupted. Exiting Alarm Clock. Goodbye!{Colors.RESET}")
     finally:
         scheduler.stop()
+
+def main() -> None:
+    # Check if run with command-line arguments (Non-interactive / Single-command mode)
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1].lower()
+        args = sys.argv[2:]
+        
+        if cmd == "help":
+            print_cli_help()
+        elif cmd == "daemon":
+            run_daemon()
+        else:
+            scheduler = AlarmScheduler()
+            if cmd == "add":
+                handle_add(scheduler, args)
+            elif cmd == "list":
+                handle_list(scheduler)
+            elif cmd == "remove":
+                handle_remove(scheduler, args)
+            elif cmd == "snooze":
+                handle_snooze(scheduler, args)
+            elif cmd == "dismiss":
+                handle_dismiss(scheduler, args)
+            else:
+                print(f"Unknown command: '{cmd}'. Type 'alarm-clock help' for usage.")
+                sys.exit(1)
+    else:
+        # Fall back to Interactive Mode
+        run_interactive()
 
 if __name__ == "__main__":
     main()

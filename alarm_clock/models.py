@@ -62,6 +62,37 @@ class Alarm:
         self.snooze_until = None
         self.snoozed_count = 0
 
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "time": self.time.strftime("%H:%M:%S"),
+            "label": self.label,
+            "state": self.state.name,
+            "snooze_until": self.snooze_until.isoformat() if self.snooze_until else None,
+            "snoozed_count": self.snoozed_count
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Alarm':
+        time_parts = [int(p) for p in data["time"].split(":")]
+        if len(time_parts) == 3:
+            time_obj = datetime.time(time_parts[0], time_parts[1], time_parts[2])
+        else:
+            time_obj = datetime.time(time_parts[0], time_parts[1])
+            
+        alarm = cls(data["id"], time_obj, data["label"])
+        alarm.state = AlarmState[data["state"]]
+        
+        snooze_until_str = data.get("snooze_until")
+        if snooze_until_str:
+            alarm.snooze_until = datetime.datetime.fromisoformat(snooze_until_str)
+        else:
+            alarm.snooze_until = None
+            
+        alarm.snoozed_count = data.get("snoozed_count", 0)
+        return alarm
+
     def __str__(self) -> str:
         snooze_info = f" (Snoozed until {self.snooze_until.strftime('%H:%M:%S')})" if self.state == AlarmState.SNOOZED and self.snooze_until else ""
         return f"[{self.id}] {self.time.strftime('%H:%M')} - '{self.label}' | State: {self.state.name}{snooze_info}"
+

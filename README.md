@@ -2,58 +2,71 @@
 
 A professional, robust, and zero-dependency Command-Line Interface (CLI) Alarm Clock written in Python. It runs natively and works seamlessly on both **Windows** and **Linux**.
 
-Designed with **Clean Architecture** principles, it leverages multithreading to manage alarm scheduling in the background while keeping the main console interactive and responsive to user input.
+Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the application supports:
+1. **Interactive Shell Mode**: A fully interactive console screen with a live ticking clock header and dynamic command prompt.
+2. **Direct CLI / Single-Command Mode**: Run command-line utilities directly from your terminal (e.g. `alarm-clock add 07:30`) which persist state to disk, paired with a background daemon process (`alarm-clock daemon`).
 
 ---
 
 ## ✨ Features
 
-- **Live Ticking Header**: Displays the current system time prominently.
-- **Thread-Safe Alarm Management**:
-  - Add alarms dynamically using 24-hour (`HH:MM`, `HH:MM:SS`) or 12-hour (`HH:MM AM/PM`) formats, with optional custom labels.
-  - List all scheduled, snoozed, or dismissed alarms in a clean, colorized grid.
-  - Remove/cancel alarms by ID.
-- **Cross-Platform Audio & Visual Triggers**:
-  - Windows: Uses native `winsound.Beep` for audio alerts.
-  - Linux: Uses terminal bell (`\a`) triggers.
-  - Displays flashing ASCII warning notifications in the terminal.
-- **Snooze & Dismiss Actions**:
-  - Quickly snooze any ringing alarm for a configurable duration (default: 5 minutes) or dismiss it.
-- **Robust Failure Isolation**:
-  - Exception handling for invalid inputs.
-  - Graceful cleanup of resources and background threads on user exit or `Ctrl+C`.
+- **Global CLI command integration**: Can be installed and executed globally as `alarm-clock` in the system shell.
+- **Persistent JSON State Storage**: State is automatically persisted to `~/.cli_alarms.json`, enabling state synchronization between different terminals and processes.
+- **Atomic File Writing**: Prevents file corruption by writing changes to a temporary file before atomically swapping it with the target database file.
+- **Thread-Safe Memory Lock**: Synchronizes all database reads and writes under a shared mutex lock to isolate background checks from user adjustments.
+- **Automatic Encoding Fallback**: Prevents crashes on legacy Windows cmd consoles that default to non-Unicode codepages (e.g., CP1252) by automatically replacing emojis with safe fallback indicators.
+- **Cross-Platform Audio alerts**:
+  - Windows: Uses native `winsound.Beep`.
+  - Linux/macOS: Uses terminal buzzer beeps (`\a`).
+- **Flexible alarm operations**: `add`, `list`, `remove`, `snooze`, and `dismiss`.
 
 ---
 
 ## 🛠️ Architecture & Design Decisions
 
-### 1. Concurrency Model
-The application separates concerns across three logical execution environments:
-- **Main Thread (UI/CLI Loop)**: Handles command input, processes commands, and displays the UI.
-- **Background Scheduler Thread**: Checks every second if any alarm is scheduled to ring, transitioning states and triggering sounds safely.
-- **Background Sound Thread**: Plays repeating auditory alerts. Firing this in its own short-lived thread ensures that blocking sound operations (like Windows beep duration) do not freeze the background scheduler or CLI loops.
-
-### 2. Thread Safety
-All access to the alarm dictionary is synchronized using a `threading.Lock`. This prevents race conditions when the user is modifying alarms (e.g. calling `add`, `remove`, `snooze`) at the exact millisecond the scheduler thread is checking or updating alarm states.
-
-### 3. Zero Dependencies (Built-in Stability)
-To ensure the evaluator can run this code instantly on any Python 3.8+ system without experiencing pip dependency installation failures or native library compilation errors (common with python sound libraries), we built the application exclusively using the **Python Standard Library** (`threading`, `datetime`, `os`, `sys`, `unittest`, `platform`).
+```
+               ┌───────────────────────┐
+               │    Local CLI Shell    │
+               │ (Direct Single-Cmds)  │
+               └───────────┬───────────┘
+                           │ Writes/Reads
+                           ▼
+               ┌───────────────────────┐
+               │  ~/.cli_alarms.json   │◄─── (Atomic State DB)
+               └───────────────────────┘
+                           ▲
+                           │ Reads/Updates State
+                           ▼
+ ┌───────────────────────────────────────────────────────────┐
+ │                   Background Daemon Mode                  │
+ │                                                           │
+ │  ┌───────────────────────┐       ┌─────────────────────┐  │
+ │  │   Scheduler Thread    ├──────►│ Sound Loop Thread   │  │
+ │  │ (Monitors System Time)│       │ (Non-blocking Beep) │  │
+ │  └───────────────────────┘       └─────────────────────┘  │
+ └───────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
-- Python **3.8** or newer installed.
+### 1. Installation
+To register the `alarm-clock` terminal command, install the package locally from the root workspace directory.
 
-### Run the Application
-Start the interactive CLI by running the following command from the root directory:
+**On Windows (without requiring admin privileges):**
+```powershell
+pip install --user -e .
+```
+*Note: Make sure your user script folder (e.g. `C:\Users\<username>\AppData\Roaming\Python\Python312\Scripts`) is in your system's PATH. If it's not, you can run the executable directly by targeting its path, or use `python -m alarm_clock.cli`.*
+
+**On Linux / macOS:**
 ```bash
-python -m alarm_clock.cli
+pip install -e .
 ```
 
-### Running Unit Tests
-A comprehensive test suite is included in `/tests` covering the parser, models, scheduler, and state progressions. Run it with:
+### 2. Running Unit Tests
+A comprehensive test suite is included in `/tests` covering the parser, models, scheduler, serialization, and persistence. Run it with:
 ```bash
 python -m unittest discover -s tests
 ```
@@ -62,21 +75,42 @@ python -m unittest discover -s tests
 
 ## 🕹️ Command Reference
 
-| Command | Arguments | Description | Example |
-| :--- | :--- | :--- | :--- |
-| `add` | `<HH:MM> [label]` | Adds a new alarm with optional label. | `add 14:30 Gym Time` |
-| `list` | *None* | Lists all active and inactive alarms. | `list` |
-| `remove` | `<ID>` | Removes an alarm from the schedule. | `remove 1` |
-| `snooze` | `<ID> [minutes]` | Snoozes a ringing alarm (default 5m). | `snooze 1 10` |
-| `dismiss` | `<ID>` | Dismisses/turns off a ringing alarm. | `dismiss 1` |
-| `help` | *None* | Displays the available command guide. | `help` |
-| `exit` / `quit` | *None* | Stops background threads and exits. | `exit` |
+### Option A: Direct CLI Mode (Persistent Single-Commands)
+You can call commands directly from any shell. Alarms are updated on disk instantly.
 
----
+1. **Start the monitor daemon** (run this in a separate terminal window or pane to play sound when alarms go off):
+   ```bash
+   alarm-clock daemon
+   ```
+2. **Add an alarm**:
+   ```bash
+   alarm-clock add 07:30 "Wake Up"
+   ```
+3. **List alarms**:
+   ```bash
+   alarm-clock list
+   ```
+4. **Snooze a ringing alarm** (e.g. snooze alarm 1 for 10 minutes):
+   ```bash
+   alarm-clock snooze 1 10
+   ```
+5. **Dismiss a ringing alarm**:
+   ```bash
+   alarm-clock dismiss 1
+   ```
+6. **Remove an alarm**:
+   ```bash
+   alarm-clock remove 1
+   ```
 
-## 🔮 Future Enhancements
-Given more time, here are the production improvements that could be added:
-1. **Persistence**: Use an SQLite database or local JSON file to save and reload alarms between sessions.
-2. **Advanced Scheduling**: Support recurring alarms (e.g., weekdays, weekends) or cron-style schedules.
-3. **Custom Ringtone Support**: Integrate custom audio files (MP3/WAV) using a lightweight player.
-4. **Daemon Mode**: Run the alarm monitor as a system service or background daemon so it alerts the user even when the interactive shell is closed.
+### Option B: Interactive Shell Mode
+If you run `alarm-clock` without any arguments, it launches a persistent, interactive console session. It manages its own background timing thread and audio loops automatically in a single terminal.
+
+```bash
+alarm-clock
+```
+Inside the interactive session, the prompt updates live and you can type sub-commands like `add`, `list`, `snooze`, `dismiss`, and `exit` directly:
+```
+(22:15:30) alarm-clock > add 07:30 Morning Workout
+Success: Created Alarm 1 for 07:30 ('Morning Workout')
+```

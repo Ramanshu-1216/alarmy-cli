@@ -1,6 +1,7 @@
 import os
 import platform
 import sys
+import datetime
 from typing import List
 from alarm_clock.models import Alarm, AlarmState
 
@@ -30,15 +31,25 @@ def enable_ansi_support() -> None:
         # Classic Windows trick to enable virtual terminal processing (ANSI escape sequences)
         os.system('')
 
+def safe_print(text: str = "") -> None:
+    """
+    Prints text safely. If the terminal encoding (e.g., CP1252 on legacy Windows cmd)
+    does not support emojis or Unicode characters, it encodes it with 'replace'
+    to prevent program crashes.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = sys.stdout.encoding or 'ascii'
+        encoded = text.encode(encoding, errors='replace')
+        print(encoded.decode(encoding))
+
 class TerminalUI:
     @staticmethod
     def clear_screen() -> None:
         """
         Clears the terminal screen.
         """
-        # We can use ANSI clear or system clear.
-        # System clear is more robust to reset scrollbacks, but ANSI is faster.
-        # Let's use standard ANSI sequence to clear screen and move cursor to top-left.
         sys.stdout.write('\033[H\033[2J')
         sys.stdout.flush()
 
@@ -53,7 +64,7 @@ class TerminalUI:
     |  _  | |_|  _  |   /|__ |  _  | (__ | |_|  _  |  __|   < 
     |_| |_|___|_| |_|_|\\|___/|_| |_|\___||___|_| |_|___||_|\_\
 {Colors.RESET}"""
-        print(banner)
+        safe_print(banner)
 
     @staticmethod
     def print_status_bar(current_time_str: str) -> None:
@@ -61,8 +72,8 @@ class TerminalUI:
         Prints the current system time in a prominent styled format.
         """
         bar = f"{Colors.HEADER}{Colors.BOLD}[ CURRENT TIME: {current_time_str} ]{Colors.RESET}"
-        print(bar)
-        print(f"{Colors.DIM}-------------------------------------------------------{Colors.RESET}")
+        safe_print(bar)
+        safe_print(f"{Colors.DIM}-------------------------------------------------------{Colors.RESET}")
 
     @staticmethod
     def print_alarms_table(alarms: List[Alarm]) -> None:
@@ -70,12 +81,12 @@ class TerminalUI:
         Renders a clean, formatted table of all alarms with color-coded states.
         """
         if not alarms:
-            print(f"\n{Colors.YELLOW}No alarms scheduled. Use 'add <HH:MM> [label]' to create one.{Colors.RESET}\n")
+            safe_print(f"\n{Colors.YELLOW}No alarms scheduled. Use 'add <HH:MM> [label]' to create one.{Colors.RESET}\n")
             return
 
         # Print Table Headers
-        print(f"{Colors.BOLD}{'ID':<6} | {'TIME':<8} | {'LABEL':<20} | {'STATE':<12} | {'DETAILS'}{Colors.RESET}")
-        print(f"{Colors.DIM}{'-'*75}{Colors.RESET}")
+        safe_print(f"{Colors.BOLD}{'ID':<6} | {'TIME':<8} | {'LABEL':<20} | {'STATE':<12} | {'DETAILS'}{Colors.RESET}")
+        safe_print(f"{Colors.DIM}{'-'*75}{Colors.RESET}")
 
         for alarm in alarms:
             # Color code based on alarm state
@@ -101,8 +112,8 @@ class TerminalUI:
             elif alarm.state == AlarmState.PENDING:
                 details = "Active"
 
-            print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<20} | {state_str:<12} | {Colors.DIM}{details}{Colors.RESET}")
-        print()
+            safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<20} | {state_str:<12} | {Colors.DIM}{details}{Colors.RESET}")
+        safe_print()
 
     @staticmethod
     def print_alarm_trigger(alarm: Alarm) -> None:
@@ -119,7 +130,7 @@ class TerminalUI:
   - Type {Colors.GREEN}dismiss {alarm.id}{Colors.RESET} to stop the alarm.
   - Type {Colors.YELLOW}snooze {alarm.id} [minutes]{Colors.RESET} to snooze (default: 5 min).
 """
-        print(alert)
+        safe_print(alert)
 
     @staticmethod
     def print_help() -> None:
@@ -136,4 +147,4 @@ class TerminalUI:
   {Colors.GREEN}help{Colors.RESET}                    - Show this menu
   {Colors.GREEN}exit{Colors.RESET} / {Colors.GREEN}quit{Colors.RESET}             - Quit the application
 """
-        print(help_text)
+        safe_print(help_text)
