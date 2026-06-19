@@ -93,7 +93,7 @@ class TestAlarmModel(unittest.TestCase):
 
     def test_json_serialization(self):
         t = datetime.time(12, 30, 45)
-        alarm = Alarm(42, t, "Eat Lunch", ["Friday"], 120)
+        alarm = Alarm(42, t, "Eat Lunch", ["Friday"], 120, 15)
         alarm.snooze(15)
         
         serialized = alarm.to_dict()
@@ -102,6 +102,7 @@ class TestAlarmModel(unittest.TestCase):
         self.assertEqual(serialized["label"], "Eat Lunch")
         self.assertEqual(serialized["days"], ["Friday"])
         self.assertEqual(serialized["auto_dismiss_sec"], 120)
+        self.assertEqual(serialized["snooze_duration_min"], 15)
         self.assertEqual(serialized["state"], "SNOOZED")
         self.assertIsNotNone(serialized["snooze_until"])
         
@@ -111,7 +112,20 @@ class TestAlarmModel(unittest.TestCase):
         self.assertEqual(deserialized.label, alarm.label)
         self.assertEqual(deserialized.days, alarm.days)
         self.assertEqual(deserialized.auto_dismiss_sec, alarm.auto_dismiss_sec)
+        self.assertEqual(deserialized.snooze_duration_min, alarm.snooze_duration_min)
         self.assertEqual(deserialized.state, alarm.state)
+
+    def test_custom_snooze_fallback(self):
+        t = datetime.time(8, 30)
+        alarm = Alarm(1, t, snooze_duration_min=12)
+        
+        snooze_time = alarm.snooze(None)
+        self.assertEqual(alarm.state, AlarmState.SNOOZED)
+        
+        # Verify it snoozed for 12 minutes
+        now = datetime.datetime.now()
+        diff = snooze_time - now
+        self.assertAlmostEqual(diff.total_seconds(), 12 * 60, delta=10)
 
 class TestAlarmScheduler(unittest.TestCase):
     def setUp(self):

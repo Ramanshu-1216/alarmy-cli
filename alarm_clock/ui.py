@@ -115,7 +115,7 @@ class TerminalUI:
             elif alarm.state == AlarmState.RINGING:
                 details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s limit"
             else:
-                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s"
+                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s | Snooze: {alarm.snooze_duration_min}m"
 
             safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<18} | {days_str:<15} | {state_str:<10} | {Colors.DIM}{details}{Colors.RESET}")
         safe_print()

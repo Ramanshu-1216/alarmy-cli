@@ -100,7 +100,7 @@ class AlarmScheduler:
                     pass
             raise e
 
-    def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60) -> Alarm:
+    def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5) -> Alarm:
         """
         Parses time string, creates an alarm, saves it, and registers it with the OS task scheduler.
         """
@@ -109,14 +109,14 @@ class AlarmScheduler:
             self._load_from_disk()
             alarm_id = self._next_id
             self._next_id += 1
-            alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec)
+            alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec, snooze_duration_min)
             self._alarms[alarm_id] = alarm
             self._save_to_disk()
             
         # Hook into OS-native Task Scheduler
         schedule_alarm_task(alarm.id, alarm.time, alarm.days)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        audit_log(f"Alarm {alarm.id} added for {alarm.time.strftime('%H:%M')} (label: '{alarm.label}', type: {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s)")
+        audit_log(f"Alarm {alarm.id} added for {alarm.time.strftime('%H:%M')} (label: '{alarm.label}', type: {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m)")
         return alarm
 
     def remove_alarm(self, alarm_id: int) -> bool:
@@ -137,9 +137,10 @@ class AlarmScheduler:
             audit_log(f"Alarm {alarm_id} removed.")
         return success
 
-    def snooze_alarm(self, alarm_id: int, minutes: int = 5) -> Optional[Alarm]:
+    def snooze_alarm(self, alarm_id: int, minutes: Optional[int] = None) -> Optional[Alarm]:
         """
         Snoozes a ringing or pending alarm, and registers a temporary OS snooze task.
+        Uses the default alarm snooze limit if minutes is None.
         """
         with self._lock:
             self._load_from_disk()

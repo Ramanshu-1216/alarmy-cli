@@ -75,11 +75,29 @@ def run_add_wizard(scheduler: AlarmScheduler) -> None:
             safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
             return
 
+    # 5. Prompt Snooze Minutes
+    while True:
+        try:
+            snooze_input = input("Default snooze duration in minutes [default: 5]: ").strip()
+            if not snooze_input:
+                snooze_minutes = 5
+                break
+            snooze_minutes = int(snooze_input)
+            if snooze_minutes <= 0:
+                safe_print(f"{Colors.RED}Snooze duration must be a positive integer.{Colors.RESET}")
+                continue
+            break
+        except ValueError:
+            safe_print(f"{Colors.RED}Please enter a valid integer.{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
     # Create the alarm
     try:
-        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss)
+        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss, snooze_minutes)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss after {alarm.auto_dismiss_sec}s.{Colors.RESET}\n")
+        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m.{Colors.RESET}\n")
     except Exception as e:
         safe_print(f"{Colors.RED}Error creating alarm: {e}{Colors.RESET}")
 
@@ -91,6 +109,7 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
 
     days = []
     auto_dismiss = 60
+    snooze_minutes = 5
 
     # Parse optional --days flag
     if "--days" in args:
@@ -126,6 +145,24 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
             safe_print(f"{Colors.RED}Error parsing --auto-dismiss: {e}{Colors.RESET}")
             return
 
+    # Parse optional --snooze-minutes flag
+    if "--snooze-minutes" in args:
+        try:
+            idx = args.index("--snooze-minutes")
+            if idx + 1 < len(args):
+                snooze_str = args[idx + 1]
+                snooze_minutes = int(snooze_str)
+                if snooze_minutes <= 0:
+                    raise ValueError("Snooze duration must be a positive integer.")
+                args.pop(idx + 1)
+                args.pop(idx)
+            else:
+                safe_print(f"{Colors.RED}Error: --snooze-minutes flag requires an integer value.{Colors.RESET}")
+                return
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error parsing --snooze-minutes: {e}{Colors.RESET}")
+            return
+
     if not args:
         safe_print(f"{Colors.RED}Error: 'add' command requires a time (HH:MM).{Colors.RESET}")
         return
@@ -134,9 +171,9 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
     label = " ".join(args[1:]) if len(args) > 1 else "Alarm"
     
     try:
-        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss)
+        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss, snooze_minutes)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss after {alarm.auto_dismiss_sec}s.{Colors.RESET}")
+        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m.{Colors.RESET}")
     except ValueError as e:
         safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
 
@@ -168,12 +205,13 @@ def handle_snooze(scheduler: AlarmScheduler, args: List[str]) -> None:
     
     try:
         alarm_id = int(args[0])
-        minutes = int(args[1]) if len(args) > 1 else 5
+        minutes = int(args[1]) if len(args) > 1 else None
         
         alarm = scheduler.snooze_alarm(alarm_id, minutes)
         if alarm:
             resume_time = alarm.snooze_until.strftime('%H:%M:%S')
-            safe_print(f"{Colors.GREEN}Success: Alarm {alarm_id} snoozed for {minutes} minutes (until {resume_time}).{Colors.RESET}")
+            snooze_len = minutes if minutes is not None else alarm.snooze_duration_min
+            safe_print(f"{Colors.GREEN}Success: Alarm {alarm_id} snoozed for {snooze_len} minutes (until {resume_time}).{Colors.RESET}")
         else:
             safe_print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
     except ValueError:
@@ -311,8 +349,10 @@ def run_ring(alarm_id: int) -> None:
                 
             cmd = user_input.strip().lower()
             if cmd == "snooze":
-                scheduler.snooze_alarm(alarm_id, 5)
-                safe_print(f"{Colors.GREEN}Alarm snoozed for 5 minutes.{Colors.RESET}")
+                scheduler.snooze_alarm(alarm_id, None)  # Pass None to trigger alarm-specific snooze duration
+                # Calculate correct snooze length for stdout log print
+                snooze_len = alarm.snooze_duration_min
+                safe_print(f"{Colors.GREEN}Alarm snoozed for {snooze_len} minutes.{Colors.RESET}")
                 break
             else:
                 scheduler.dismiss_alarm(alarm_id)
@@ -331,11 +371,12 @@ def print_cli_help() -> None:
 {Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
   {Colors.GREEN}alarm-clock{Colors.RESET}                                      - Launches the interactive console
   {Colors.GREEN}alarm-clock add{Colors.RESET}                                      - Start the interactive Setup Wizard
-  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s]{Colors.RESET}
+  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m]{Colors.RESET}
                                                     - Create a new alarm directly
                                                       Flags:
                                                         --days: repeat on days (e.g. Mon,Wed or daily)
                                                         --auto-dismiss: seconds limit (e.g. 30)
+                                                        --snooze-minutes: custom snooze limit (e.g. 10)
   {Colors.GREEN}alarm-clock list{Colors.RESET}                                     - List all alarms and exit
   {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}                               - Remove an alarm and exit
   {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}                     - Snooze a ringing alarm and exit

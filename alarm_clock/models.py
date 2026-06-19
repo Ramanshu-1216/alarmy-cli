@@ -47,12 +47,13 @@ def parse_days(days_str: str) -> List[str]:
     return result
 
 class Alarm:
-    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60):
+    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5):
         self.id = alarm_id
         self.time = time_obj  # datetime.time object (HH:MM)
         self.label = label
         self.days = days or []  # List of canonical day names, empty for one-time
         self.auto_dismiss_sec = auto_dismiss_sec
+        self.snooze_duration_min = snooze_duration_min
         self.state = AlarmState.PENDING
         self.snooze_until: Optional[datetime.datetime] = None
         self.snoozed_count: int = 0
@@ -79,13 +80,15 @@ class Alarm:
                 
         return False
 
-    def snooze(self, minutes: int = 5) -> datetime.datetime:
+    def snooze(self, minutes: Optional[int] = None) -> datetime.datetime:
         """
         Transitions the alarm to SNOOZED state and calculates the target wakeup time.
+        Uses alarm-specific default if minutes is None.
         """
         now = datetime.datetime.now()
         self.state = AlarmState.SNOOZED
-        self.snooze_until = now + datetime.timedelta(minutes=minutes)
+        snooze_min = minutes if minutes is not None else self.snooze_duration_min
+        self.snooze_until = now + datetime.timedelta(minutes=snooze_min)
         self.snoozed_count += 1
         self.ring_start_time = None
         return self.snooze_until
@@ -114,6 +117,7 @@ class Alarm:
             "label": self.label,
             "days": self.days,
             "auto_dismiss_sec": self.auto_dismiss_sec,
+            "snooze_duration_min": self.snooze_duration_min,
             "state": self.state.name,
             "snooze_until": self.snooze_until.isoformat() if self.snooze_until else None,
             "snoozed_count": self.snoozed_count,
@@ -133,7 +137,8 @@ class Alarm:
             time_obj, 
             data["label"], 
             data.get("days", []), 
-            data.get("auto_dismiss_sec", 60)
+            data.get("auto_dismiss_sec", 60),
+            data.get("snooze_duration_min", 5)
         )
         alarm.state = AlarmState[data["state"]]
         
