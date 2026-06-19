@@ -1,0 +1,23 @@
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local configuration
+.env
+venv/
+ENV/
+.venv/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Windows thumb caches
+Thumbs.db
+ehthumbs.db
+desktop.ini
