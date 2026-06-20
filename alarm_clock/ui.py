@@ -147,12 +147,18 @@ class TerminalUI:
     @staticmethod
     def print_help() -> None:
         """
-        Displays all available command commands and descriptions.
+        Displays all available commands and descriptions.
         """
         help_text = f"""
 {Colors.BOLD}Available Commands:{Colors.RESET}
-  {Colors.GREEN}add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m] [--tts] [--tone t]{Colors.RESET}
+  {Colors.GREEN}add <HH:MM> [label] [options]{Colors.RESET}
                           - Create a new alarm (e.g. `add 07:30 Morning Run --tts --tone chime`)
+                            Options:
+                              --days <d>           Repeat days (e.g. Mon,Wed,Fri, or 'daily', or Once)
+                              --auto-dismiss <s>    Auto-dismiss duration in <s> seconds (default: 60)
+                              --snooze-minutes <m>  Default snooze duration in <m> minutes (default: 5)
+                              --tts                 Enable Text-to-Speech morning briefing
+                              --tone <t>            Set alarm tone: preset (default, digital, chime) or path to .wav file
   {Colors.GREEN}list{Colors.RESET}                    - List all active and past alarms
   {Colors.GREEN}remove <ID>{Colors.RESET}             - Remove an alarm by its numerical ID
   {Colors.GREEN}snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm (default: 5 minutes)

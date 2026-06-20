@@ -4,14 +4,14 @@ A professional, robust, and zero-dependency Command-Line Interface (CLI) Alarm C
 
 Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the application supports:
 1. **Interactive Shell Mode**: A fully interactive console screen with a live ticking clock header and dynamic command prompt.
-2. **Daemon Mode**: Run the background sound and time monitor (`alarm-clock daemon`).
+2. **Daemon Mode**: Run the background sound and time monitor (`alarmy daemon`).
 3. **OS-Native Task Mode (Zero Manual Daemon)**: Alarms automatically register with the operating system scheduler (Windows Task Scheduler via `schtasks` or Linux via `crontab`). When the time is reached, the OS automatically pops up a terminal instance to play sound and accept user inputs.
 
 ---
 
 ## ✨ Features
 
-- **Global PyPI Package**: Install globally as `alarmy-cli` and run using the `alarm-clock` command.
+- **Global PyPI Package**: Install globally as `alarmy-cli` and run using the `alarmy` command.
 - **Text-to-Speech (TTS) Briefings**: Plays a non-blocking voice synthesis briefing (greeting, current local time, alarm label, and random motivational quote) using native OS engines at the start of ringing.
 - **Customizable Tones**:
   - `default`: standard 1000Hz beep pattern.
@@ -58,7 +58,7 @@ Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the
  │                  OS-Scheduled Task Mode                   │
  │                                                           │
  │  ┌────────────────────────┐       ┌────────────────────┐  │
- │  │ Windows Task Scheduler ├──────►│ alarm-clock ring   │  │
+ │  │ Windows Task Scheduler ├──────►│ alarmy ring        │  │
  │  │       / Linux Cron     │       │ (Terminal Pop-Up)  │  │
  │  └────────────────────────┘       └────────────────────┘  │
  └───────────────────────────────────────────────────────────┘
@@ -76,7 +76,7 @@ pip install alarmy-cli
 ```
 
 **Install from Local Source (for Development):**
-To register the `alarm-clock` terminal command locally, install the package from the root directory.
+To register the `alarmy` terminal command locally, install the package from the root directory.
 * On Windows: `pip install --user -e .`
 * On Linux/macOS: `pip install -e .`
 
@@ -97,7 +97,7 @@ When you add an alarm, it is registered automatically with the operating system.
 
 1. **Add an alarm**:
    ```bash
-   alarm-clock add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30 --tts --tone chime
+   alarmy add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30 --tts --tone chime
    ```
    *Flags:*
    - `--snooze-minutes`: default snooze duration in minutes.
@@ -107,7 +107,7 @@ When you add an alarm, it is registered automatically with the operating system.
 
 2. **List alarms**:
    ```bash
-   alarm-clock list
+   alarmy list
    ```
 3. When the time is reached, the operating system launches a terminal window automatically, starts speaking the TTS briefing, triggers the tone audio player, and prompts you:
    ```
@@ -117,28 +117,28 @@ When you add an alarm, it is registered automatically with the operating system.
 
 4. **Remove an alarm** (cleans it up from both disk and OS task registries):
    ```bash
-   alarm-clock remove 1
+   alarmy remove 1
    ```
 
 ### Option B: Daemon Mode (Manual Persistent Process)
 1. **Start the monitor daemon** (run this in a separate terminal window or pane to play sound when alarms go off):
    ```bash
-   alarm-clock daemon
+   alarmy daemon
    ```
 2. **Snooze/Dismiss** from your main terminal:
    ```bash
-   alarm-clock snooze 1 10
-   alarm-clock dismiss 1
+   alarmy snooze 1 10
+   alarmy dismiss 1
    ```
 
 ### Option C: Interactive Shell Mode
-If you run `alarm-clock` without any arguments, it launches a persistent, interactive console session. It manages its own background timing thread and audio loops automatically in a single terminal.
+If you run `alarmy` without any arguments, it launches a persistent, interactive console session. It manages its own background timing thread and audio loops automatically in a single terminal.
 
 ```bash
-alarm-clock
+alarmy
 ```
 Inside the interactive session, the prompt updates live and you can type sub-commands like `add`, `list`, `snooze`, `dismiss`, and `exit` directly:
 ```
-(12:10:30) alarm-clock > add 07:30 Morning Workout --tts --tone digital
+(12:10:30) alarmy > add 07:30 Morning Workout --tts --tone digital
 Success: Created Alarm 1 for 07:30 ('Morning Workout') - one-time, auto-dismiss: 60s, snooze: 5m, TTS Enabled, Tone: digital.
 ```

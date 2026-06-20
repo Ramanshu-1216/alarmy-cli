@@ -14,7 +14,7 @@ def on_alarm_trigger(alarm: Alarm) -> None:
     Callback executed when an alarm fires during interactive mode.
     """
     TerminalUI.print_alarm_trigger(alarm)
-    sys.stdout.write(f"\n({datetime.datetime.now().strftime('%H:%M:%S')}) alarm-clock > ")
+    sys.stdout.write(f"\n({datetime.datetime.now().strftime('%H:%M:%S')}) alarmy > ")
     sys.stdout.flush()
 
 def run_add_wizard(scheduler: AlarmScheduler) -> None:
@@ -426,23 +426,22 @@ def print_cli_help() -> None:
     TerminalUI.print_banner()
     help_text = f"""
 {Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
-  {Colors.GREEN}alarm-clock{Colors.RESET}                                      - Launches the interactive console
-  {Colors.GREEN}alarm-clock add{Colors.RESET}                                      - Start the interactive Setup Wizard
-  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m] [--tts] [--tone t]{Colors.RESET}
-                                                     - Create a new alarm directly
-                                                       Flags:
-                                                         --days: repeat on days (e.g. Mon,Wed or daily)
-                                                         --auto-dismiss: seconds limit (e.g. 30)
-                                                         --snooze-minutes: custom snooze limit (e.g. 10)
-                                                         --tts: enable text-to-speech briefing
-                                                         --tone: preset (default, digital, chime) or path to .wav file
-  {Colors.GREEN}alarm-clock list{Colors.RESET}                                     - List all alarms and exit
-  {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}                               - Remove an alarm and exit
-  {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}                     - Snooze a ringing alarm and exit
-  {Colors.GREEN}alarm-clock dismiss <ID>{Colors.RESET}                              - Dismiss a ringing alarm and exit
-  {Colors.GREEN}alarm-clock clear{Colors.RESET}                                    - Wipes the database and cancels all OS tasks
-  {Colors.GREEN}alarm-clock daemon{Colors.RESET}                                    - Run the background sound and time monitor
-  {Colors.GREEN}alarm-clock help{Colors.RESET}                                      - Show this CLI command usage
+  {Colors.GREEN}alarmy{Colors.RESET}                                           - Launches the interactive console
+  {Colors.GREEN}alarmy add{Colors.RESET}                                       - Start the interactive Setup Wizard
+  {Colors.GREEN}alarmy add <HH:MM> [label] [options]{Colors.RESET}             - Create a new alarm directly
+                                                       Options:
+                                                         --days <d>           Repeat on comma-separated days (e.g. Mon,Wed or daily)
+                                                         --auto-dismiss <s>    Dismiss alarm automatically after <s> seconds
+                                                         --snooze-minutes <m>  Set custom snooze duration in <m> minutes
+                                                         --tts                 Enable native Text-to-Speech morning briefing
+                                                         --tone <t>            Set tone: preset (default, digital, chime) or path to .wav
+  {Colors.GREEN}alarmy list{Colors.RESET}                                      - List all alarms and exit
+  {Colors.GREEN}alarmy remove <ID>{Colors.RESET}                                - Remove an alarm and exit
+  {Colors.GREEN}alarmy snooze <ID> [minutes]{Colors.RESET}                      - Snooze a ringing alarm and exit
+  {Colors.GREEN}alarmy dismiss <ID>{Colors.RESET}                               - Dismiss a ringing alarm and exit
+  {Colors.GREEN}alarmy clear{Colors.RESET}                                     - Wipes the database and cancels all OS tasks
+  {Colors.GREEN}alarmy daemon{Colors.RESET}                                    - Run the background sound and time monitor
+  {Colors.GREEN}alarmy help{Colors.RESET}                                       - Show this CLI command usage
 """
     print(help_text)
 
@@ -462,7 +461,7 @@ def run_interactive() -> None:
     try:
         while True:
             now_str = datetime.datetime.now().strftime("%H:%M:%S")
-            prompt = f"({now_str}) alarm-clock > "
+            prompt = f"({now_str}) alarmy > "
             
             try:
                 cmd_line = input(prompt).strip()
@@ -539,7 +538,7 @@ def main() -> None:
             elif cmd == "dismiss":
                 handle_dismiss(scheduler, args)
             else:
-                safe_print(f"Unknown command: '{cmd}'. Type 'alarm-clock help' for usage.")
+                safe_print(f"Unknown command: '{cmd}'. Type 'alarmy help' for usage.")
                 sys.exit(1)
     else:
         run_interactive()
