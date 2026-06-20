@@ -366,7 +366,7 @@ def run_daemon() -> None:
     Monitors database JSON, updates states, and plays audio when alarms trigger.
     """
     enable_ansi_support()
-    safe_print(f"{Colors.CYAN}Starting Alarm Clock Daemon...{Colors.RESET}")
+    safe_print(f"{Colors.CYAN}Starting Alarmy Daemon...{Colors.RESET}")
     safe_print(f"{Colors.DIM}Monitoring alarms. Press Ctrl+C to terminate.{Colors.RESET}\n")
     
     def daemon_trigger_callback(alarm: Alarm) -> None:
@@ -503,7 +503,7 @@ def print_cli_help() -> None:
     enable_ansi_support()
     TerminalUI.print_banner()
     help_text = f"""
-{Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
+{Colors.BOLD}Alarmy CLI Usage:{Colors.RESET}
   {Colors.GREEN}alarmy{Colors.RESET}                                           - Launches the interactive console
   {Colors.GREEN}alarmy add{Colors.RESET}                                       - Start the interactive Setup Wizard
   {Colors.GREEN}alarmy add <HH:MM> [label] [options]{Colors.RESET}             - Create a new alarm directly
@@ -534,7 +534,7 @@ def run_interactive() -> None:
     
     TerminalUI.clear_screen()
     TerminalUI.print_banner()
-    safe_print(f"{Colors.CYAN}Welcome to the CLI Alarm Clock! (Interactive Mode){Colors.RESET}")
+    safe_print(f"{Colors.CYAN}Welcome to Alarmy! (Interactive Mode){Colors.RESET}")
     TerminalUI.print_help()
     
     try:
@@ -555,7 +555,7 @@ def run_interactive() -> None:
             args = parts[1:]
             
             if cmd in ("exit", "quit"):
-                safe_print(f"\n{Colors.CYAN}Exiting Alarm Clock. Goodbye!{Colors.RESET}")
+                safe_print(f"\n{Colors.CYAN}Exiting Alarmy. Goodbye!{Colors.RESET}")
                 break
             elif cmd == "help":
                 TerminalUI.print_help()
@@ -576,7 +576,7 @@ def run_interactive() -> None:
                 safe_print(f"{Colors.RED}Unknown command: '{cmd}'. Type 'help' for a list of commands.{Colors.RESET}")
                 
     except KeyboardInterrupt:
-        safe_print(f"\n\n{Colors.CYAN}Session interrupted. Exiting Alarm Clock. Goodbye!{Colors.RESET}")
+        safe_print(f"\n\n{Colors.CYAN}Session interrupted. Exiting Alarmy. Goodbye!{Colors.RESET}")
     finally:
         scheduler.stop()
 

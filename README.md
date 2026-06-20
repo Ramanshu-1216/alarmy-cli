@@ -1,6 +1,6 @@
-# ⏰ Command-Line Interface (CLI) Alarm Clock
+# ⏰ Alarmy CLI - Dual-Mode Command-Line Alarm System
 
-A professional, robust, and zero-dependency Command-Line Interface (CLI) Alarm Clock written in Python. It runs natively and works seamlessly on **Windows**, **Linux**, and **macOS**.
+A professional, robust, and zero-dependency CLI alarm system (Alarmy) written in Python. It runs natively and works seamlessly on **Windows**, **Linux**, and **macOS**.
 
 Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the application supports:
 1. **Interactive Shell Mode**: A fully interactive console screen with a live ticking clock header and dynamic command prompt.

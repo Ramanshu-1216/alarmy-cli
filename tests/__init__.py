@@ -1,3 +1,3 @@
 """
-Unit Test Suite for Alarm Clock CLI
+Unit Test Suite for Alarmy CLI
 """

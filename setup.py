@@ -6,7 +6,7 @@ long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="alarmy-cli",
-    version="1.0.5",
+    version="1.0.6",
     packages=find_packages(),
     install_requires=[],
     entry_points={
@@ -15,7 +15,7 @@ setup(
         ],
     },
     author="Ramanshu Gawande",
-    description="A thread-safe, persistent, dual-mode CLI Alarm Clock",
+    description="A thread-safe, persistent, dual-mode CLI alarm system (Alarmy)",
     long_description=long_description,
     long_description_content_type="text/markdown",
     python_requires='>=3.8',
