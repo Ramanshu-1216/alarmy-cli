@@ -1,6 +1,7 @@
 import sys
 import datetime
 import time
+import os
 import threading
 from typing import List, Optional
 
@@ -93,11 +94,41 @@ def run_add_wizard(scheduler: AlarmScheduler) -> None:
             safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
             return
 
+    # 6. Prompt TTS
+    while True:
+        try:
+            tts_input = input("Enable Text-to-Speech briefing? (y/n) [default: n]: ").strip().lower()
+            if not tts_input or tts_input in ('n', 'no'):
+                tts = False
+                break
+            elif tts_input in ('y', 'yes'):
+                tts = True
+                break
+            else:
+                safe_print(f"{Colors.RED}Please enter 'y' or 'n'.{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
+    # 7. Prompt Tone
+    while True:
+        try:
+            tone_input = input("Enter alarm tone (default, digital, chime or path to .wav file) [default: default]: ").strip()
+            tone = tone_input if tone_input else "default"
+            if tone not in ("default", "digital", "chime") and not os.path.exists(tone):
+                safe_print(f"{Colors.YELLOW}Warning: Local file '{tone}' not found. Will default to beep if triggered.{Colors.RESET}")
+            break
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
     # Create the alarm
     try:
-        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss, snooze_minutes)
+        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss, snooze_minutes, tts, tone)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m.{Colors.RESET}\n")
+        tts_text = ", TTS Enabled" if alarm.tts else ""
+        tone_text = f", Tone: {alarm.tone}" if alarm.tone != "default" else ""
+        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}.{Colors.RESET}\n")
     except Exception as e:
         safe_print(f"{Colors.RED}Error creating alarm: {e}{Colors.RESET}")
 
@@ -110,6 +141,30 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
     days = []
     auto_dismiss = 60
     snooze_minutes = 5
+    tts = False
+    tone = "default"
+
+    # Parse optional --tts flag
+    if "--tts" in args:
+        tts = True
+        args.remove("--tts")
+
+    # Parse optional --tone flag
+    if "--tone" in args:
+        try:
+            idx = args.index("--tone")
+            if idx + 1 < len(args):
+                tone = args[idx + 1]
+                if tone not in ("default", "digital", "chime") and not os.path.exists(tone):
+                    safe_print(f"{Colors.YELLOW}Warning: Tone file '{tone}' does not exist. Defaulting to beep if triggered.{Colors.RESET}")
+                args.pop(idx + 1)
+                args.pop(idx)
+            else:
+                safe_print(f"{Colors.RED}Error: --tone flag requires a value (e.g. chime or path to .wav).{Colors.RESET}")
+                return
+        except ValueError as e:
+            safe_print(f"{Colors.RED}Error parsing --tone: {e}{Colors.RESET}")
+            return
 
     # Parse optional --days flag
     if "--days" in args:
@@ -171,9 +226,11 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
     label = " ".join(args[1:]) if len(args) > 1 else "Alarm"
     
     try:
-        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss, snooze_minutes)
+        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss, snooze_minutes, tts, tone)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m.{Colors.RESET}")
+        tts_text = ", TTS Enabled" if alarm.tts else ""
+        tone_text = f", Tone: {alarm.tone}" if alarm.tone != "default" else ""
+        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}.{Colors.RESET}")
     except ValueError as e:
         safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
 
@@ -303,7 +360,7 @@ def run_ring(alarm_id: int) -> None:
         return
 
     # Start audio buzz
-    scheduler._sound_controller.start()
+    scheduler._sound_controller.start(tone=alarm.tone, tts=alarm.tts, label=alarm.label)
     
     TerminalUI.clear_screen()
     TerminalUI.print_alarm_trigger(alarm)
@@ -371,12 +428,14 @@ def print_cli_help() -> None:
 {Colors.BOLD}CLI Alarm Clock Usage:{Colors.RESET}
   {Colors.GREEN}alarm-clock{Colors.RESET}                                      - Launches the interactive console
   {Colors.GREEN}alarm-clock add{Colors.RESET}                                      - Start the interactive Setup Wizard
-  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m]{Colors.RESET}
-                                                    - Create a new alarm directly
-                                                      Flags:
-                                                        --days: repeat on days (e.g. Mon,Wed or daily)
-                                                        --auto-dismiss: seconds limit (e.g. 30)
-                                                        --snooze-minutes: custom snooze limit (e.g. 10)
+  {Colors.GREEN}alarm-clock add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m] [--tts] [--tone t]{Colors.RESET}
+                                                     - Create a new alarm directly
+                                                       Flags:
+                                                         --days: repeat on days (e.g. Mon,Wed or daily)
+                                                         --auto-dismiss: seconds limit (e.g. 30)
+                                                         --snooze-minutes: custom snooze limit (e.g. 10)
+                                                         --tts: enable text-to-speech briefing
+                                                         --tone: preset (default, digital, chime) or path to .wav file
   {Colors.GREEN}alarm-clock list{Colors.RESET}                                     - List all alarms and exit
   {Colors.GREEN}alarm-clock remove <ID>{Colors.RESET}                               - Remove an alarm and exit
   {Colors.GREEN}alarm-clock snooze <ID> [minutes]{Colors.RESET}                     - Snooze a ringing alarm and exit

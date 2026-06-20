@@ -120,7 +120,9 @@ class TerminalUI:
             elif alarm.state == AlarmState.RINGING:
                 details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s limit"
             else:
-                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s | Snooze: {alarm.snooze_duration_min}m"
+                tts_part = " | TTS: ON" if getattr(alarm, 'tts', False) else ""
+                tone_part = f" | Tone: {getattr(alarm, 'tone', 'default')}" if getattr(alarm, 'tone', 'default') != "default" else ""
+                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s | Snooze: {alarm.snooze_duration_min}m{tts_part}{tone_part}"
 
             safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<18} | {days_str:<15} | {state_str:<10} | {Colors.DIM}{details}{Colors.RESET}")
         safe_print()
@@ -135,7 +137,7 @@ class TerminalUI:
 {Colors.RED}{Colors.BOLD}  Time  : {alarm.time.strftime('%H:%M')}
   Label : {alarm.label.upper()}
   State : {Colors.BLINK}RINGING{Colors.RESET}
-
+ 
   {Colors.BOLD}Commands to respond:{Colors.RESET}
   - Type {Colors.GREEN}dismiss {alarm.id}{Colors.RESET} to stop the alarm.
   - Type {Colors.YELLOW}snooze {alarm.id} [minutes]{Colors.RESET} to snooze (default: 5 min).
@@ -149,7 +151,8 @@ class TerminalUI:
         """
         help_text = f"""
 {Colors.BOLD}Available Commands:{Colors.RESET}
-  {Colors.GREEN}add <HH:MM> [label]{Colors.RESET}     - Create a new alarm (e.g. `add 07:30 Morning Run`)
+  {Colors.GREEN}add <HH:MM> [label] [--days d] [--auto-dismiss s] [--snooze-minutes m] [--tts] [--tone t]{Colors.RESET}
+                          - Create a new alarm (e.g. `add 07:30 Morning Run --tts --tone chime`)
   {Colors.GREEN}list{Colors.RESET}                    - List all active and past alarms
   {Colors.GREEN}remove <ID>{Colors.RESET}             - Remove an alarm by its numerical ID
   {Colors.GREEN}snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm (default: 5 minutes)

@@ -47,13 +47,15 @@ def parse_days(days_str: str) -> List[str]:
     return result
 
 class Alarm:
-    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5):
+    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5, tts: bool = False, tone: str = "default"):
         self.id = alarm_id
         self.time = time_obj  # datetime.time object (HH:MM)
         self.label = label
         self.days = days or []  # List of canonical day names, empty for one-time
         self.auto_dismiss_sec = auto_dismiss_sec
         self.snooze_duration_min = snooze_duration_min
+        self.tts = tts
+        self.tone = tone
         self.state = AlarmState.PENDING
         self.snooze_until: Optional[datetime.datetime] = None
         self.snoozed_count: int = 0
@@ -118,6 +120,8 @@ class Alarm:
             "days": self.days,
             "auto_dismiss_sec": self.auto_dismiss_sec,
             "snooze_duration_min": self.snooze_duration_min,
+            "tts": self.tts,
+            "tone": self.tone,
             "state": self.state.name,
             "snooze_until": self.snooze_until.isoformat() if self.snooze_until else None,
             "snoozed_count": self.snoozed_count,
@@ -138,7 +142,9 @@ class Alarm:
             data["label"], 
             data.get("days", []), 
             data.get("auto_dismiss_sec", 60),
-            data.get("snooze_duration_min", 5)
+            data.get("snooze_duration_min", 5),
+            data.get("tts", False),
+            data.get("tone", "default")
         )
         alarm.state = AlarmState[data["state"]]
         
@@ -161,4 +167,6 @@ class Alarm:
     def __str__(self) -> str:
         snooze_info = f" (Snoozed until {self.snooze_until.strftime('%H:%M:%S')})" if self.state == AlarmState.SNOOZED and self.snooze_until else ""
         days_info = f" [Days: {','.join(self.days)}]" if self.days else " [Once]"
-        return f"[{self.id}] {self.time.strftime('%H:%M')} - '{self.label}'{days_info} | State: {self.state.name}{snooze_info}"
+        tts_info = " [TTS: ON]" if self.tts else ""
+        tone_info = f" [Tone: {self.tone}]" if self.tone != "default" else ""
+        return f"[{self.id}] {self.time.strftime('%H:%M')} - '{self.label}'{days_info}{tts_info}{tone_info} | State: {self.state.name}{snooze_info}"

@@ -46,15 +46,24 @@ class TestDayParser(unittest.TestCase):
 class TestAlarmModel(unittest.TestCase):
     def test_alarm_initialization(self):
         t = datetime.time(10, 0)
-        alarm = Alarm(1, t, "Workout", ["Monday", "Wednesday"], 30)
+        alarm = Alarm(1, t, "Workout", ["Monday", "Wednesday"], 30, 5, True, "chime")
         self.assertEqual(alarm.id, 1)
         self.assertEqual(alarm.time, t)
         self.assertEqual(alarm.label, "Workout")
         self.assertEqual(alarm.days, ["Monday", "Wednesday"])
         self.assertEqual(alarm.auto_dismiss_sec, 30)
+        self.assertEqual(alarm.snooze_duration_min, 5)
+        self.assertTrue(alarm.tts)
+        self.assertEqual(alarm.tone, "chime")
         self.assertEqual(alarm.state, AlarmState.PENDING)
         self.assertIsNone(alarm.snooze_until)
         self.assertEqual(alarm.snoozed_count, 0)
+
+    def test_alarm_initialization_defaults(self):
+        t = datetime.time(10, 0)
+        alarm = Alarm(1, t)
+        self.assertFalse(alarm.tts)
+        self.assertEqual(alarm.tone, "default")
 
     def test_should_trigger_recurring(self):
         t = datetime.time(8, 30)
@@ -93,7 +102,7 @@ class TestAlarmModel(unittest.TestCase):
 
     def test_json_serialization(self):
         t = datetime.time(12, 30, 45)
-        alarm = Alarm(42, t, "Eat Lunch", ["Friday"], 120, 15)
+        alarm = Alarm(42, t, "Eat Lunch", ["Friday"], 120, 15, True, "digital")
         alarm.snooze(15)
         
         serialized = alarm.to_dict()
@@ -103,6 +112,8 @@ class TestAlarmModel(unittest.TestCase):
         self.assertEqual(serialized["days"], ["Friday"])
         self.assertEqual(serialized["auto_dismiss_sec"], 120)
         self.assertEqual(serialized["snooze_duration_min"], 15)
+        self.assertTrue(serialized["tts"])
+        self.assertEqual(serialized["tone"], "digital")
         self.assertEqual(serialized["state"], "SNOOZED")
         self.assertIsNotNone(serialized["snooze_until"])
         
@@ -113,6 +124,8 @@ class TestAlarmModel(unittest.TestCase):
         self.assertEqual(deserialized.days, alarm.days)
         self.assertEqual(deserialized.auto_dismiss_sec, alarm.auto_dismiss_sec)
         self.assertEqual(deserialized.snooze_duration_min, alarm.snooze_duration_min)
+        self.assertTrue(deserialized.tts)
+        self.assertEqual(deserialized.tone, alarm.tone)
         self.assertEqual(deserialized.state, alarm.state)
 
     def test_custom_snooze_fallback(self):
@@ -161,13 +174,17 @@ class TestAlarmScheduler(unittest.TestCase):
                 pass
 
     def test_add_and_get_alarms(self):
-        alarm1 = self.scheduler.add_alarm("10:00", "Morning Alarm")
+        alarm1 = self.scheduler.add_alarm("10:00", "Morning Alarm", tts=True, tone="chime")
         alarm2 = self.scheduler.add_alarm("08:00", "Early Alarm")
         
         alarms = self.scheduler.get_all_alarms()
         self.assertEqual(len(alarms), 2)
         self.assertEqual(alarms[0].id, alarm2.id)
         self.assertEqual(alarms[1].id, alarm1.id)
+        self.assertTrue(alarms[1].tts)
+        self.assertEqual(alarms[1].tone, "chime")
+        self.assertFalse(alarms[0].tts)
+        self.assertEqual(alarms[0].tone, "default")
 
     def test_remove_alarm(self):
         alarm = self.scheduler.add_alarm("09:00")
