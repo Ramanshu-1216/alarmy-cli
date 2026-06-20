@@ -47,7 +47,7 @@ def parse_days(days_str: str) -> List[str]:
     return result
 
 class Alarm:
-    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5, tts: bool = False, tone: str = "default"):
+    def __init__(self, alarm_id: int, time_obj: datetime.time, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5, tts: bool = False, tone: str = "default", math_challenge: bool = False):
         self.id = alarm_id
         self.time = time_obj  # datetime.time object (HH:MM)
         self.label = label
@@ -56,6 +56,7 @@ class Alarm:
         self.snooze_duration_min = snooze_duration_min
         self.tts = tts
         self.tone = tone
+        self.math_challenge = math_challenge
         self.state = AlarmState.PENDING
         self.snooze_until: Optional[datetime.datetime] = None
         self.snoozed_count: int = 0
@@ -122,6 +123,7 @@ class Alarm:
             "snooze_duration_min": self.snooze_duration_min,
             "tts": self.tts,
             "tone": self.tone,
+            "math_challenge": self.math_challenge,
             "state": self.state.name,
             "snooze_until": self.snooze_until.isoformat() if self.snooze_until else None,
             "snoozed_count": self.snoozed_count,
@@ -144,7 +146,8 @@ class Alarm:
             data.get("auto_dismiss_sec", 60),
             data.get("snooze_duration_min", 5),
             data.get("tts", False),
-            data.get("tone", "default")
+            data.get("tone", "default"),
+            data.get("math_challenge", False)
         )
         alarm.state = AlarmState[data["state"]]
         
@@ -169,4 +172,5 @@ class Alarm:
         days_info = f" [Days: {','.join(self.days)}]" if self.days else " [Once]"
         tts_info = " [TTS: ON]" if self.tts else ""
         tone_info = f" [Tone: {self.tone}]" if self.tone != "default" else ""
-        return f"[{self.id}] {self.time.strftime('%H:%M')} - '{self.label}'{days_info}{tts_info}{tone_info} | State: {self.state.name}{snooze_info}"
+        math_info = " [Math: ON]" if self.math_challenge else ""
+        return f"[{self.id}] {self.time.strftime('%H:%M')} - '{self.label}'{days_info}{tts_info}{tone_info}{math_info} | State: {self.state.name}{snooze_info}"

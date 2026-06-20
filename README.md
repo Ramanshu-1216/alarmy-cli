@@ -97,13 +97,14 @@ When you add an alarm, it is registered automatically with the operating system.
 
 1. **Add an alarm**:
    ```bash
-   alarmy add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30 --tts --tone chime
+   alarmy add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30 --tts --tone chime --math
    ```
    *Flags:*
    - `--snooze-minutes`: default snooze duration in minutes.
    - `--auto-dismiss`: auto-dismiss duration in seconds.
    - `--tts`: enable the native Text-to-Speech briefing.
    - `--tone`: select a preset tone (`default`, `digital`, `chime`) or specify a path to a local `.wav` file.
+   - `--math`: enable the Math Challenge (forces you to solve a simple addition or multiplication problem to dismiss the alarm).
 
 2. **List alarms**:
    ```bash

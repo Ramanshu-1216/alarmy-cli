@@ -122,7 +122,8 @@ class TerminalUI:
             else:
                 tts_part = " | TTS: ON" if getattr(alarm, 'tts', False) else ""
                 tone_part = f" | Tone: {getattr(alarm, 'tone', 'default')}" if getattr(alarm, 'tone', 'default') != "default" else ""
-                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s | Snooze: {alarm.snooze_duration_min}m{tts_part}{tone_part}"
+                math_part = " | Math: ON" if getattr(alarm, 'math_challenge', False) else ""
+                details = f"Auto-dismiss: {alarm.auto_dismiss_sec}s | Snooze: {alarm.snooze_duration_min}m{tts_part}{tone_part}{math_part}"
 
             safe_print(f"{alarm.id:<6} | {alarm.time.strftime('%H:%M'):<8} | {alarm.label:<18} | {days_str:<15} | {state_str:<10} | {Colors.DIM}{details}{Colors.RESET}")
         safe_print()
@@ -159,6 +160,7 @@ class TerminalUI:
                               --snooze-minutes <m>  Default snooze duration in <m> minutes (default: 5)
                               --tts                 Enable Text-to-Speech morning briefing
                               --tone <t>            Set alarm tone: preset (default, digital, chime) or path to .wav file
+                              --math                Require solving a math problem to dismiss
   {Colors.GREEN}list{Colors.RESET}                    - List all active and past alarms
   {Colors.GREEN}remove <ID>{Colors.RESET}             - Remove an alarm by its numerical ID
   {Colors.GREEN}snooze <ID> [minutes]{Colors.RESET}   - Snooze a ringing alarm (default: 5 minutes)

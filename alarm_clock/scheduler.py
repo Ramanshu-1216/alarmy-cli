@@ -100,7 +100,7 @@ class AlarmScheduler:
                     pass
             raise e
 
-    def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5, tts: bool = False, tone: str = "default") -> Alarm:
+    def add_alarm(self, time_str: str, label: str = "Alarm", days: Optional[List[str]] = None, auto_dismiss_sec: int = 60, snooze_duration_min: int = 5, tts: bool = False, tone: str = "default", math_challenge: bool = False) -> Alarm:
         """
         Parses time string, creates an alarm, saves it, and registers it with the OS task scheduler.
         """
@@ -109,14 +109,14 @@ class AlarmScheduler:
             self._load_from_disk()
             alarm_id = self._next_id
             self._next_id += 1
-            alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec, snooze_duration_min, tts, tone)
+            alarm = Alarm(alarm_id, time_obj, label, days, auto_dismiss_sec, snooze_duration_min, tts, tone, math_challenge)
             self._alarms[alarm_id] = alarm
             self._save_to_disk()
             
         # Hook into OS-native Task Scheduler
         schedule_alarm_task(alarm.id, alarm.time, alarm.days)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
-        audit_log(f"Alarm {alarm.id} added for {alarm.time.strftime('%H:%M')} (label: '{alarm.label}', type: {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m, tts: {alarm.tts}, tone: {alarm.tone})")
+        audit_log(f"Alarm {alarm.id} added for {alarm.time.strftime('%H:%M')} (label: '{alarm.label}', type: {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m, tts: {alarm.tts}, tone: {alarm.tone}, math: {alarm.math_challenge})")
         return alarm
 
     def remove_alarm(self, alarm_id: int) -> bool:

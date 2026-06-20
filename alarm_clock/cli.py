@@ -17,6 +17,42 @@ def on_alarm_trigger(alarm: Alarm) -> None:
     sys.stdout.write(f"\n({datetime.datetime.now().strftime('%H:%M:%S')}) alarmy > ")
     sys.stdout.flush()
 
+def verify_math_challenge() -> bool:
+    """
+    Prompts the user with a simple math problem (addition or multiplication).
+    Returns True if solved correctly, False otherwise.
+    """
+    import random
+    op = random.choice(["+", "*"])
+    if op == "+":
+        num1 = random.randint(10, 99)
+        num2 = random.randint(10, 99)
+        answer = num1 + num2
+    else:
+        num1 = random.randint(2, 12)
+        num2 = random.randint(2, 12)
+        answer = num1 * num2
+        
+    safe_print(f"\n{Colors.YELLOW}{Colors.BOLD}⚠️ MATH CHALLENGE ACTIVE! To dismiss, you must solve this problem:{Colors.RESET}")
+    
+    try:
+        user_ans_str = input(f"Solve: {num1} {op} {num2} = ").strip()
+        if not user_ans_str:
+            return False
+        user_ans = int(user_ans_str)
+        if user_ans == answer:
+            safe_print(f"{Colors.GREEN}Correct! Challenge solved.{Colors.RESET}")
+            return True
+        else:
+            safe_print(f"{Colors.RED}Incorrect! Answer was {answer}.{Colors.RESET}")
+            return False
+    except (ValueError, TypeError):
+        safe_print(f"{Colors.RED}Invalid input! Please enter an integer number.{Colors.RESET}")
+        return False
+    except KeyboardInterrupt:
+        safe_print(f"\n{Colors.RED}Challenge interrupted!{Colors.RESET}")
+        return False
+
 def run_add_wizard(scheduler: AlarmScheduler) -> None:
     """
     Guides the user step-by-step to create an alarm with input validation.
@@ -122,13 +158,30 @@ def run_add_wizard(scheduler: AlarmScheduler) -> None:
             safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
             return
 
+    # 8. Prompt Math Challenge
+    while True:
+        try:
+            math_input = input("Enable Math Challenge for dismissal? (y/n) [default: n]: ").strip().lower()
+            if not math_input or math_input in ('n', 'no'):
+                math_challenge = False
+                break
+            elif math_input in ('y', 'yes'):
+                math_challenge = True
+                break
+            else:
+                safe_print(f"{Colors.RED}Please enter 'y' or 'n'.{Colors.RESET}")
+        except KeyboardInterrupt:
+            safe_print(f"\n{Colors.YELLOW}Setup cancelled.{Colors.RESET}")
+            return
+
     # Create the alarm
     try:
-        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss, snooze_minutes, tts, tone)
+        alarm = scheduler.add_alarm(time_input, label, days, auto_dismiss, snooze_minutes, tts, tone, math_challenge)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
         tts_text = ", TTS Enabled" if alarm.tts else ""
         tone_text = f", Tone: {alarm.tone}" if alarm.tone != "default" else ""
-        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}.{Colors.RESET}\n")
+        math_text = ", Math Challenge Enabled" if alarm.math_challenge else ""
+        safe_print(f"\n{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}{math_text}.{Colors.RESET}\n")
     except Exception as e:
         safe_print(f"{Colors.RED}Error creating alarm: {e}{Colors.RESET}")
 
@@ -143,6 +196,12 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
     snooze_minutes = 5
     tts = False
     tone = "default"
+    math_challenge = False
+
+    # Parse optional --math flag
+    if "--math" in args:
+        math_challenge = True
+        args.remove("--math")
 
     # Parse optional --tts flag
     if "--tts" in args:
@@ -226,11 +285,12 @@ def handle_add(scheduler: AlarmScheduler, args: List[str]) -> None:
     label = " ".join(args[1:]) if len(args) > 1 else "Alarm"
     
     try:
-        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss, snooze_minutes, tts, tone)
+        alarm = scheduler.add_alarm(time_str, label, days, auto_dismiss, snooze_minutes, tts, tone, math_challenge)
         recurrence_text = f"repeating on {','.join(alarm.days)}" if alarm.days else "one-time"
         tts_text = ", TTS Enabled" if alarm.tts else ""
         tone_text = f", Tone: {alarm.tone}" if alarm.tone != "default" else ""
-        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}.{Colors.RESET}")
+        math_text = ", Math Challenge Enabled" if alarm.math_challenge else ""
+        safe_print(f"{Colors.GREEN}Success: Created Alarm {alarm.id} for {alarm.time.strftime('%H:%M')} ('{alarm.label}') - {recurrence_text}, auto-dismiss: {alarm.auto_dismiss_sec}s, snooze: {alarm.snooze_duration_min}m{tts_text}{tone_text}{math_text}.{Colors.RESET}")
     except ValueError as e:
         safe_print(f"{Colors.RED}Error: {e}{Colors.RESET}")
 
@@ -281,6 +341,17 @@ def handle_dismiss(scheduler: AlarmScheduler, args: List[str]) -> None:
     
     try:
         alarm_id = int(args[0])
+        alarms = {a.id: a for a in scheduler.get_all_alarms()}
+        alarm = alarms.get(alarm_id)
+        if not alarm:
+            safe_print(f"{Colors.RED}Error: Alarm ID {alarm_id} not found.{Colors.RESET}")
+            return
+            
+        if alarm.math_challenge:
+            if not verify_math_challenge():
+                safe_print(f"{Colors.RED}Dismissal aborted. Incorrect answer to math challenge.{Colors.RESET}")
+                return
+                
         alarm = scheduler.dismiss_alarm(alarm_id)
         if alarm:
             safe_print(f"{Colors.GREEN}Success: Alarm {alarm_id} dismissed.{Colors.RESET}")
@@ -407,14 +478,21 @@ def run_ring(alarm_id: int) -> None:
             cmd = user_input.strip().lower()
             if cmd == "snooze":
                 scheduler.snooze_alarm(alarm_id, None)  # Pass None to trigger alarm-specific snooze duration
-                # Calculate correct snooze length for stdout log print
                 snooze_len = alarm.snooze_duration_min
                 safe_print(f"{Colors.GREEN}Alarm snoozed for {snooze_len} minutes.{Colors.RESET}")
                 break
             else:
-                scheduler.dismiss_alarm(alarm_id)
-                safe_print(f"{Colors.GREEN}Alarm dismissed.{Colors.RESET}")
-                break
+                if getattr(alarm, 'math_challenge', False):
+                    if verify_math_challenge():
+                        scheduler.dismiss_alarm(alarm_id)
+                        safe_print(f"{Colors.GREEN}Alarm dismissed.{Colors.RESET}")
+                        break
+                    else:
+                        safe_print(f"{Colors.RED}Failed math challenge. Alarm continues to ring!{Colors.RESET}\n")
+                else:
+                    scheduler.dismiss_alarm(alarm_id)
+                    safe_print(f"{Colors.GREEN}Alarm dismissed.{Colors.RESET}")
+                    break
     except KeyboardInterrupt:
         scheduler.dismiss_alarm(alarm_id)
     finally:
@@ -435,6 +513,7 @@ def print_cli_help() -> None:
                                                          --snooze-minutes <m>  Set custom snooze duration in <m> minutes
                                                          --tts                 Enable native Text-to-Speech morning briefing
                                                          --tone <t>            Set tone: preset (default, digital, chime) or path to .wav
+                                                         --math                Require solving a math problem to dismiss
   {Colors.GREEN}alarmy list{Colors.RESET}                                      - List all alarms and exit
   {Colors.GREEN}alarmy remove <ID>{Colors.RESET}                                - Remove an alarm and exit
   {Colors.GREEN}alarmy snooze <ID> [minutes]{Colors.RESET}                      - Snooze a ringing alarm and exit
