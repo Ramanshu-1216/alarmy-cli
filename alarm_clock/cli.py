@@ -585,7 +585,11 @@ def main() -> None:
         cmd = sys.argv[1].lower()
         args = sys.argv[2:]
         
-        if cmd == "help":
+        if cmd in ("-v", "--version", "--v", "version"):
+            from alarm_clock import __version__
+            print(f"Alarmy version {__version__}")
+            sys.exit(0)
+        elif cmd == "help":
             print_cli_help()
         elif cmd == "daemon":
             run_daemon()
