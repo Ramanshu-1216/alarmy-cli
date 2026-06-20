@@ -360,6 +360,53 @@ def handle_dismiss(scheduler: AlarmScheduler, args: List[str]) -> None:
     except ValueError:
         safe_print(f"{Colors.RED}Error: Alarm ID must be an integer.{Colors.RESET}")
 
+def check_for_updates() -> Optional[str]:
+    """
+    Checks PyPI for the latest version of alarmy-cli.
+    Returns the latest version string if it is newer than the current version, otherwise None.
+    """
+    import urllib.request
+    import json
+    try:
+        from alarm_clock import __version__
+        url = "https://pypi.org/pypi/alarmy-cli/json"
+        req = urllib.request.Request(url, headers={'User-Agent': 'alarmy-cli'})
+        # Small timeout (0.8s) to prevent blocking terminal startup
+        with urllib.request.urlopen(req, timeout=0.8) as response:
+            data = json.loads(response.read().decode())
+            latest_version = data["info"]["version"]
+            latest_parts = [int(p) for p in latest_version.split(".")]
+            current_parts = [int(p) for p in __version__.split(".")]
+            if latest_parts > current_parts:
+                return latest_version
+    except Exception:
+        pass
+    return None
+
+def run_upgrade() -> None:
+    """
+    Upgrades alarmy-cli to the latest version using pip.
+    """
+    enable_ansi_support()
+    safe_print(f"{Colors.CYAN}Checking for updates and upgrading Alarmy...{Colors.RESET}")
+    
+    import subprocess
+    import sys
+    
+    pip_cmd = [sys.executable, "-m", "pip", "install", "--upgrade", "--no-cache-dir", "alarmy-cli"]
+    
+    safe_print(f"{Colors.DIM}Running: {' '.join(pip_cmd)}{Colors.RESET}\n")
+    try:
+        res = subprocess.run(pip_cmd)
+        if res.returncode == 0:
+            safe_print(f"\n{Colors.GREEN}{Colors.BOLD}Success: Alarmy has been successfully upgraded!{Colors.RESET}")
+            safe_print(f"{Colors.GREEN}Please restart your terminal or run 'alarmy' to load the new version.{Colors.RESET}")
+        else:
+            safe_print(f"\n{Colors.RED}Upgrade failed with exit code {res.returncode}.{Colors.RESET}")
+    except Exception as e:
+        safe_print(f"\n{Colors.RED}Upgrade failed: {e}{Colors.RESET}")
+    sys.exit(0)
+
 def run_daemon() -> None:
     """
     Runs the Alarm Scheduler process indefinitely in the foreground.
@@ -520,6 +567,7 @@ def print_cli_help() -> None:
   {Colors.GREEN}alarmy dismiss <ID>{Colors.RESET}                               - Dismiss a ringing alarm and exit
   {Colors.GREEN}alarmy clear{Colors.RESET}                                     - Wipes the database and cancels all OS tasks
   {Colors.GREEN}alarmy daemon{Colors.RESET}                                    - Run the background sound and time monitor
+  {Colors.GREEN}alarmy upgrade{Colors.RESET}                                   - Upgrade Alarmy to the latest version via pip
   {Colors.GREEN}alarmy help{Colors.RESET}                                       - Show this CLI command usage
 """
     print(help_text)
@@ -534,7 +582,15 @@ def run_interactive() -> None:
     
     TerminalUI.clear_screen()
     TerminalUI.print_banner()
-    safe_print(f"{Colors.CYAN}Welcome to Alarmy! (Interactive Mode){Colors.RESET}")
+    from alarm_clock import __version__
+    safe_print(f"{Colors.CYAN}Welcome to Alarmy! (Interactive Mode) [v{__version__}]{Colors.RESET}")
+    
+    # Check for update synchronously (fast timeout)
+    latest = check_for_updates()
+    if latest:
+        safe_print(f"{Colors.YELLOW}{Colors.BOLD}🔔 UPDATE AVAILABLE: Version {latest} is now available (Current: {__version__}){Colors.RESET}")
+        safe_print(f"{Colors.YELLOW}👉 Type 'upgrade' inside the shell or run 'alarmy upgrade' in terminal to update!{Colors.RESET}\n")
+        
     TerminalUI.print_help()
     
     try:
@@ -557,6 +613,8 @@ def run_interactive() -> None:
             if cmd in ("exit", "quit"):
                 safe_print(f"\n{Colors.CYAN}Exiting Alarmy. Goodbye!{Colors.RESET}")
                 break
+            elif cmd == "upgrade":
+                run_upgrade()
             elif cmd == "help":
                 TerminalUI.print_help()
             elif cmd == "add":
@@ -591,6 +649,8 @@ def main() -> None:
             sys.exit(0)
         elif cmd == "help":
             print_cli_help()
+        elif cmd == "upgrade":
+            run_upgrade()
         elif cmd == "daemon":
             run_daemon()
         elif cmd == "ring":
