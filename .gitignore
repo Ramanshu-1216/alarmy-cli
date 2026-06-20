@@ -21,3 +21,8 @@ ENV/
 Thumbs.db
 ehthumbs.db
 desktop.ini
+
+# Packaging outputs
+build/
+dist/
+*.egg-info/

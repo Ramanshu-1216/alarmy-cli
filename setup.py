@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="alarm-clock",
+    name="alarmy-cli",
     version="1.0.0",
     packages=find_packages(),
     install_requires=[],
@@ -10,7 +10,7 @@ setup(
             'alarm-clock=alarm_clock.cli:main',
         ],
     },
-    author="Senior Software Engineer candidate",
+    author="Ramanshu Gawande",
     description="A thread-safe, persistent, dual-mode CLI Alarm Clock",
     python_requires='>=3.8',
 )
