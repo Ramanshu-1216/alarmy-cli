@@ -1,6 +1,6 @@
 # ⏰ Command-Line Interface (CLI) Alarm Clock
 
-A professional, robust, and zero-dependency Command-Line Interface (CLI) Alarm Clock written in Python. It runs natively and works seamlessly on both **Windows** and **Linux**.
+A professional, robust, and zero-dependency Command-Line Interface (CLI) Alarm Clock written in Python. It runs natively and works seamlessly on **Windows**, **Linux**, and **macOS**.
 
 Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the application supports:
 1. **Interactive Shell Mode**: A fully interactive console screen with a live ticking clock header and dynamic command prompt.
@@ -11,21 +11,20 @@ Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the
 
 ## ✨ Features
 
-- **Global CLI command integration**: Can be installed and executed globally as `alarm-clock` in the system shell.
-- **Dual Sound Alert Modes**:
-  - Background Python daemon checks system time and plays sound.
-  - OS-native schedulers trigger short-lived processes to ring.
+- **Global PyPI Package**: Install globally as `alarmy-cli` and run using the `alarm-clock` command.
+- **Text-to-Speech (TTS) Briefings**: Plays a non-blocking voice synthesis briefing (greeting, current local time, alarm label, and random motivational quote) using native OS engines at the start of ringing.
+- **Customizable Tones**:
+  - `default`: standard 1000Hz beep pattern.
+  - `digital`: rapid dual-beep pattern at 1500Hz.
+  - `chime`: rising musical chimes (C-E-G-C).
+  - Local Audio File: Pass any local path to a `.wav` file to play it in a loop.
 - **OS-Native Task Automation**:
   - Windows: Creates user-level tasks using `schtasks` with automatic date fallback mechanisms for locale compatibility (`dd/mm/yyyy` vs `mm/dd/yyyy`).
   - Linux: Appends entries programmatically to the user's `crontab`.
 - **Atomic File Writing**: Prevents state corruption by writing changes to a temporary file before atomically swapping it with the target database file (`~/.cli_alarms.json`).
 - **Thread-Safe Memory Lock**: Synchronizes all database reads and writes under a shared mutex lock to isolate background checks from user adjustments.
 - **Automatic Encoding Fallback**: Prevents crashes on legacy Windows cmd consoles that default to non-Unicode codepages (e.g., CP1252) by automatically replacing emojis with safe fallback indicators.
-- **Cross-Platform Audio alerts**:
-  - Windows: Uses native `winsound.Beep`.
-  - Linux/macOS: Uses terminal buzzer beeps (`\a`).
-- **Flexible Alarm Operations**: `add`, `list`, `remove`, `snooze`, and `dismiss`.
-  - Supports setting an alarm-specific default snooze limit (`--snooze-minutes`) which is automatically respected if no snooze duration is entered during rings.
+- **CI/CD Integrated**: Automated 15-job matrix testing across OS platforms and Python versions, with secure OIDC publishing to PyPI.
 
 ---
 
@@ -70,18 +69,18 @@ Designed with **Clean Architecture** and **Unix-style CLI daemon patterns**, the
 ## 🚀 Getting Started
 
 ### 1. Installation
-To register the `alarm-clock` terminal command, install the package locally from the root workspace directory.
 
-**On Windows (without requiring admin privileges):**
-```powershell
-pip install --user -e .
-```
-*Note: Make sure your user script folder (e.g. `C:\Users\<username>\AppData\Roaming\Python\Python312\Scripts`) is in your system's PATH. If it's not, you can run the executable directly by targeting its path, or use `python -m alarm_clock.cli`.*
-
-**On Linux / macOS:**
+**Install from PyPI (Recommended):**
 ```bash
-pip install -e .
+pip install alarmy-cli
 ```
+
+**Install from Local Source (for Development):**
+To register the `alarm-clock` terminal command locally, install the package from the root directory.
+* On Windows: `pip install --user -e .`
+* On Linux/macOS: `pip install -e .`
+
+*Note: Make sure your user script folder is in your system's PATH. If it's not, you can run the executable directly by targeting its path, or use `python -m alarm_clock.cli`.*
 
 ### 2. Running Unit Tests
 A comprehensive test suite is included in `/tests` covering the parser, models, scheduler, serialization, persistence, and OS scheduler triggers. Run it with:
@@ -98,17 +97,24 @@ When you add an alarm, it is registered automatically with the operating system.
 
 1. **Add an alarm**:
    ```bash
-   alarm-clock add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30
+   alarm-clock add 07:30 "Wake Up" --snooze-minutes 8 --auto-dismiss 30 --tts --tone chime
    ```
+   *Flags:*
+   - `--snooze-minutes`: default snooze duration in minutes.
+   - `--auto-dismiss`: auto-dismiss duration in seconds.
+   - `--tts`: enable the native Text-to-Speech briefing.
+   - `--tone`: select a preset tone (`default`, `digital`, `chime`) or specify a path to a local `.wav` file.
+
 2. **List alarms**:
    ```bash
    alarm-clock list
    ```
-3. When the time is reached, the operating system launches a terminal window automatically, starts beep-beeping, and prompts you:
+3. When the time is reached, the operating system launches a terminal window automatically, starts speaking the TTS briefing, triggers the tone audio player, and prompts you:
    ```
    Press Enter to dismiss, or type 'snooze' to snooze:
    ```
    *If you type `snooze`, it automatically snoozes for 8 minutes (respecting the custom snooze parameter).*
+
 4. **Remove an alarm** (cleans it up from both disk and OS task registries):
    ```bash
    alarm-clock remove 1
@@ -133,6 +139,6 @@ alarm-clock
 ```
 Inside the interactive session, the prompt updates live and you can type sub-commands like `add`, `list`, `snooze`, `dismiss`, and `exit` directly:
 ```
-(22:15:30) alarm-clock > add 07:30 Morning Workout
-Success: Created Alarm 1 for 07:30 ('Morning Workout')
+(12:10:30) alarm-clock > add 07:30 Morning Workout --tts --tone digital
+Success: Created Alarm 1 for 07:30 ('Morning Workout') - one-time, auto-dismiss: 60s, snooze: 5m, TTS Enabled, Tone: digital.
 ```
