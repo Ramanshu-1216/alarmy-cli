@@ -6,7 +6,7 @@ long_description = (here / "README.md").read_text(encoding="utf-8")
 
 setup(
     name="alarmy-cli",
-    version="1.0.6",
+    version="1.0.7",
     packages=find_packages(),
     install_requires=[],
     entry_points={
